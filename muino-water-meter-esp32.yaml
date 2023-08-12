@@ -1,6 +1,6 @@
 # These substitutions allow the end user to override certain values
 substitutions:
-  name: "project-template"
+  name: "muino-water-meter"
 
 esphome:
   name: "${name}"
@@ -11,11 +11,11 @@ esphome:
   # This will allow for (future) project identification,
   # configuration and updates.
   project:
-    name: esphome.project-template
+    name: esphome.muino-water-meter
     version: "1.0"
 
 esp32:
-  board: esp32dev
+  board: seeed_xiao_esp32c3
   framework:
     type: arduino
 
@@ -30,7 +30,7 @@ ota:
 
 # This should point to the public location of this yaml file.
 dashboard_import:
-  package_import_url: github://esphome/esphome-project-template/project-template-esp32.yaml@main
+  package_import_url: github://martijnvwezel/watermeter-esphome/muino-water-meter-esp32.yaml@main
 
 wifi:
   # Set up a wifi access point using the device name above

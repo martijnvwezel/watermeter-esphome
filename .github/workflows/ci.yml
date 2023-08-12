@@ -10,8 +10,8 @@ jobs:
     strategy:
       matrix:
         file:
-          - project-template-esp32.yaml
-          - project-template-esp8266.yaml
+          - muino-water-meter-esp32.yaml
+
     steps:
       - name: Checkout source code
         uses: actions/checkout@v2
