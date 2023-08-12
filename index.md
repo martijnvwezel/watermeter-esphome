@@ -1,6 +1,6 @@
-# Muino water meter
+# About
 
-Add some information about your project here...
+Add some information about your project here.
 
 # Installation
 
