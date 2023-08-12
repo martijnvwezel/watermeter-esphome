@@ -12,7 +12,7 @@ esphome:
   # configuration and updates.
   project:
     name: esphome.muino-water-meter
-    version: "1.0"
+    version: "1.0.0"
 
 esp32:
   board: seeed_xiao_esp32c3
