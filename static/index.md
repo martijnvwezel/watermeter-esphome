@@ -1,6 +1,6 @@
 # Muino water meter
 
-Add some information about your project here...
+This will be updated soon, currently https://github.com/martijnvwezel/watersensor has the original source code.
 
 # Installation
 
