@@ -1,0 +1,9 @@
+{
+  "chipFamily": "ESP32-C3",
+  "parts": [
+    {
+      "path": "muino-water-meter-esp32/muino-water-meter-esp32.bin",
+      "offset": 0
+    }
+  ]
+}

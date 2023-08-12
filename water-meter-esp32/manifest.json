@@ -1,9 +1,0 @@
-{
-  "chipFamily": "ESP32",
-  "parts": [
-    {
-      "path": "water-meter-esp32/water-meter-esp32.bin",
-      "offset": 0
-    }
-  ]
-}
