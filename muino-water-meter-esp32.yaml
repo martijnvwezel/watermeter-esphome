@@ -2,9 +2,9 @@
 substitutions:
   name: "muino-water-meter"
   includes:
-    - my_custom_component.h
+    - "my_custom_component.h"
   platformio_options:
-    board_build.flash_mode: qio
+    board_build.flash_mode: "qio"
 
 esphome:
   name: "${name}"
