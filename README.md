@@ -5,3 +5,19 @@ Water meters are devices that measure how much water you use. They have a spinni
 
 
 <a href="https://martijnvwezel.github.io/watermeter-esphome/">Online Water Meter Programmer..</a> 
+
+
+
+# Development
+``` bash
+docker run --rm --privileged -v  ${PWD}:/config   -it ghcr.io/esphome/esphome run  --device=/dev/ttyACM0 "muino-water-meter-esp32.yaml"
+```
+## for windows
+``` bash
+# for windows builds are done using WSL
+# Open following in admin powershell
+usbipd wsl list
+
+# select  the one to connnect
+usbipd wsl attach --busid <busid>
+```
