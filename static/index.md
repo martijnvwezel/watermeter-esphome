@@ -6,8 +6,8 @@ Water meters are devices that measure how much water you use. They have a spinni
 # Installation
 
 This installation will be updated soon, currently <a href="https://github.com/martijnvwezel/">Github</a> watersensor has the original source code.
-
-You can use the button below to install the pre-built firmware directly to your device via USB from the browser.
+The folowing install button can make your device already updatable, for the update that comes in the future..
+<!-- You can use the button below to install the pre-built firmware directly to your device via USB from the browser. -->
 
 <esp-web-install-button manifest="./manifest.json"></esp-web-install-button>
 
