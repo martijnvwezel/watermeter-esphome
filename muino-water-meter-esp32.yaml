@@ -24,25 +24,25 @@ esp32:
   framework:
     type: arduino
 
-# sensor:
-#   - platform: custom
-#     lambda: |-
-#       auto my_custom = new MyCustomSensor();
-#       App.register_component(my_custom);
-#       return {my_custom->water_liter_sensor, my_custom->sensa, my_custom->sensb, my_custom->sensc};
+sensor:
+  - platform: custom
+    lambda: |-
+      auto my_custom = new MyCustomSensor();
+      App.register_component(my_custom);
+      return {my_custom->water_liter_sensor, my_custom->sensa, my_custom->sensb, my_custom->sensc};
 
-#     sensors:
-#       - name: "water_liter_sensor"
-#         unit_of_measurement: L
-#         state_class: total_increasing
-#         device_class: water
-#         accuracy_decimals: 2
-#       - name: "sensa"
-#         accuracy_decimals: 2
-#       - name: "sensb"
-#         accuracy_decimals: 2
-#       - name: "sensc"
-#         accuracy_decimals: 2
+    sensors:
+      - name: "water_liter_sensor"
+        unit_of_measurement: L
+        state_class: total_increasing
+        device_class: water
+        accuracy_decimals: 2
+      - name: "sensa"
+        accuracy_decimals: 2
+      - name: "sensb"
+        accuracy_decimals: 2
+      - name: "sensc"
+        accuracy_decimals: 2
 
 # To be able to get logs from the device via serial and api.
 logger:
