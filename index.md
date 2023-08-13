@@ -5,7 +5,7 @@ Water meters are devices that measure how much water you use. They have a spinni
 
 # Installation
 
-This installation will be updated soon, currently https://github.com/martijnvwezel/watersensor has the original source code.
+This installation will be updated soon, currently <a href="https://github.com/martijnvwezel/">Github</a> watersensor has the original source code.
 
 You can use the button below to install the pre-built firmware directly to your device via USB from the browser.
 
