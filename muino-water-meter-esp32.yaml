@@ -1,10 +1,10 @@
 # These substitutions allow the end user to override certain values
 substitutions:
   name: "muino-water-meter"
-  # includes:
-  #   - "my_custom_component.h"
-  # platformio_options:
-  #   board_build.flash_mode: "qio"
+includes:
+  - "my_custom_component.h"
+# platformio_options:
+#   board_build.flash_mode: "qio"
 
 esphome:
   name: "${name}"
