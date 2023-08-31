@@ -15,7 +15,7 @@
 #define PI_3 1.0471975512
 #define PI2_3 2.09439510239
 
-#define POLLING_TIME_MSEC (uint32_t) id(polling_time_sec) * 1000
+#define POLLING_TIME_MSEC (uint32_t) id(polling_time_sec, 300) * 1000
 
 static const char* TAG = "Muino_water_sensor";
 struct state_t {
