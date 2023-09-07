@@ -41,5 +41,13 @@ The folowing install button can make your device already updatable, for the upda
 
 <esp-web-install-button manifest="./manifest.json"></esp-web-install-button>
 
-<script type="module" src="https://unpkg.com/esp-web-tools@9.1.0/dist/web/install-button.js?module"></script>
+<!-- <script type="module" src="https://unpkg.com/esp-web-tools@9.1.0/dist/web/install-button.js?module"></script> -->
+
+
+<script type="module" src="https://unpkg.com/esp-web-tools@9/dist/web/install-button.js?module"></script>
+
+test button
+<esp-web-install-button
+  manifest="https://firmware.esphome.io/esphome-web/manifest.json"
+></esp-web-install-button>
 
