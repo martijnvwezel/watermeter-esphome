@@ -21,7 +21,7 @@ Thank you for buying the Muino Water Meter Reader :). So here I tried to explain
 ### Installation steps
 * Connect the Muino Water-Meter Reader to your water-meter, I and others use M2.5 screws/bolts to attach. It will be firm in the PCB as attended. For some meters there are no holes and those people use tie-wraps or just tape..
 * Connect the USB-C power
-* Go to your phone/wifi-device and connect to the water-meter WiFi (password: `12345678`)
+* Go to your phone/wifi-device and connect to the water-meter WiFi (if you need a password: `12345678`)
 * Go to your ESPHome board and you will see the following soon
 <img src="/img/esphome_adopt.png" alt="connector" height="150" class="center"/>
 * Go through to setup of ESPHome and copy the secret-key
@@ -40,6 +40,4 @@ The folowing install button can make your device already updatable, for the upda
 <!-- You can use the button below to install the pre-built firmware directly to your device via USB from the browser. -->
 
 <esp-web-install-button manifest="./manifest.json"></esp-web-install-button>
-
-<script type="module" src="https://unpkg.com/esp-web-tools@9.1.0/dist/web/install-button.js?module"></script>
-
+<script type="module" src="https://unpkg.com/esp-web-tools@9/dist/web/install-button.js?module"></script>

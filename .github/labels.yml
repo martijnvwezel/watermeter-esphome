@@ -1,4 +1,7 @@
 ---
+- name: "ESPHome-issue"
+  color: ee0701
+  description: "An issue with ESPHome itself."
 - name: "breaking-change"
   color: ee0701
   description: "A breaking change for existing users."

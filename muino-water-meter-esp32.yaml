@@ -12,12 +12,14 @@ esphome:
   name_add_mac_suffix: true
   includes:
     - my_custom_component.h
+  # platformio_options:
+  # board_build.flash_mode: "qio"
 
   # This will allow for (future) project identification,
   # configuration and updates.
   project:
     name: esphome.muino-water-meter
-    version: "1.0.0"
+    version: "1.0.2"
 
 esp32:
   board: seeed_xiao_esp32c3
@@ -65,18 +67,10 @@ dashboard_import:
 wifi:
   # Set up a wifi access point using the device name above
   ap:
-    password: "12345678"
 
 # In combination with the `ap` this allows the user
 # to provision wifi credentials to the device.
 captive_portal:
-
-##########################################################
-# Most projects should not remove anything from above here
-# and should just modify the name, project name/version 
-# and git url for the dashboard_import
-##########################################################
-
 
 # Sets up Bluetooth LE (Only on ESP32) to allow the user
 # to provision wifi credentials to the device.
