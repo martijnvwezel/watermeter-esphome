@@ -22,7 +22,7 @@ esphome:
     version: "1.0.2"
 
 esp32:
-  board: seeed_xiao_esp32c3
+  board: esp32-c3-devkitm-1
   framework:
     type: arduino
 
