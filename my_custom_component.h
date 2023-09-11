@@ -1,5 +1,16 @@
 #include "esphome.h"
 
+
+//GPIO
+#define D4 27
+#define D5 14
+
+// mapping to match other feathers and also in order
+#define A0 26 
+#define A1 25
+#define A2 34
+#define A3 39
+
 #define SENS_A A0
 #define SENS_B A1
 #define SENS_C A2
