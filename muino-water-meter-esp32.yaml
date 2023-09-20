@@ -47,8 +47,8 @@ sensor:
         accuracy_decimals: 2
 
 # To be able to get logs from the device via serial and api.
-logger:
-  hardware_uart: UART1
+# logger:
+#   hardware_uart: UART1
 logger:
   level: NONE
 # API is a requirement of the dashboard import.
