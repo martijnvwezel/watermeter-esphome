@@ -24,6 +24,13 @@ esp32:
   framework:
     type: arduino
 
+
+globals:
+  - id: polling_time_sec
+    type: int
+     # 5*60 = 5min
+    initial_value: "300"
+
 sensor:
   - platform: custom
     lambda: |-
