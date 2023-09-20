@@ -2,21 +2,21 @@
 
 
 //GPIO
-#define D4 27
-#define D5 14
+#define D4 6
+#define D5 7
 
 // mapping to match other feathers and also in order
-#define A0 26 
-#define A1 25
-#define A2 34
-#define A3 39
+#define A0 2 
+#define A1 3
+#define A2 4
+#define A3 5
 
-#define SENS_A 26 //A0
-#define SENS_B 25 //A1
-#define SENS_C 34 //A2
+#define SENS_A A0
+#define SENS_B A1
+#define SENS_C A2
 
-#define LED 14 // D5
-#define LIGHT_SEN_ENABLE 27 //D4
+#define LED D5
+#define LIGHT_SEN_ENABLE D4
 
 #define SMOOTHING_FACTOR 3 // 2 - 10
 #define AC_STEPS 16        // given pi/3 coarse estimate of phase, calculate autocorrelation of signals within that pi/3 range
