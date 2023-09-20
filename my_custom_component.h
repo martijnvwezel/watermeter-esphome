@@ -1,5 +1,16 @@
 #include "esphome.h"
 
+
+// //GPIO
+// #define D4 6
+// #define D5 7
+
+// // mapping to match other feathers and also in order
+// #define A0 2 
+// #define A1 3
+// #define A2 4
+// #define A3 5
+
 #define SENS_A A0
 #define SENS_B A1
 #define SENS_C A2
@@ -14,6 +25,10 @@
 // * Some calculations help
 #define PI_3 1.0471975512
 #define PI2_3 2.09439510239
+
+// #define POLLING_TIME_MSEC (uint32_t) id(polling_time_sec) * 1000
+#define POLLING_TIME_MSEC 5*60*1000 // 5min
+
 
 static const char* TAG = "Muino_water_sensor";
 struct state_t {
@@ -33,23 +48,22 @@ struct state_t {
 class MyCustomSensor : public PollingComponent, public Sensor {
 public:
     Sensor* water_liter_sensor = new Sensor();
-    Sensor* sensa = new Sensor();
-    Sensor* sensb = new Sensor();
-    Sensor* sensc = new Sensor();
+    Sensor* sensa              = new Sensor();
+    Sensor* sensb              = new Sensor();
+    Sensor* sensc              = new Sensor();
 
     uint32_t mili_liters_total = 0; // * since boot
-    float liter = 0.0;
+    float    liter             = 0.0;
     int      sender            = 0; // * Send only 1 update each 30 seconds
     bool     not_inited        = true;
     state_t  state;
     float    bliep = 0.0;
 
-
     int32_t sen_a = 0;
     int32_t sen_b = 0;
     int32_t sen_c = 0;
 
-    MyCustomSensor() : PollingComponent(5*60*1000) {
+    MyCustomSensor() : PollingComponent(POLLING_TIME_MSEC) {
 
         this->state.phase  = 0;
         this->state.fine   = 0;
@@ -76,7 +90,6 @@ public:
         analogSetPinAttenuation(SENS_B, ADC_0db);
         analogSetPinAttenuation(SENS_C, ADC_0db);
 
-
         pinMode(LED, OUTPUT);
         digitalWrite(LED, LOW);
 
@@ -95,9 +108,9 @@ public:
         // digitalWrite(LED, LOW);
         // delay(5);
 
-        int32_t sen_a_zero = 0 ;// analogReadMilliVolts(SENS_A);
-        int32_t sen_b_zero = 0 ;// analogReadMilliVolts(SENS_B);
-        int32_t sen_c_zero = 0 ;// analogReadMilliVolts(SENS_C);
+        int32_t sen_a_zero = 0; // analogReadMilliVolts(SENS_A);
+        int32_t sen_b_zero = 0; // analogReadMilliVolts(SENS_B);
+        int32_t sen_c_zero = 0; // analogReadMilliVolts(SENS_C);
 
         this->sen_a = this->sen_a - sen_a_zero;
         this->sen_b = this->sen_b - sen_b_zero;
@@ -171,7 +184,7 @@ public:
 
         uint32_t mililiters     = (uint32_t)(liters_float_fine * 1000);
         this->mili_liters_total = mililiters;
-        this->liter = liters_float_fine;
+        this->liter             = liters_float_fine;
 
         return 1;
     }
@@ -220,7 +233,7 @@ public:
         short    pn[5];
         if (*phase & 1)
             pn[0] = a + a - b - c, pn[1] = b + b - a - c,
-            pn[2] = c + c - a - b;     // same
+            pn[2] = c + c - a - b; // same
         else
             pn[0]     = b + c - a - a, // less
                 pn[1] = a + c - b - b, // more

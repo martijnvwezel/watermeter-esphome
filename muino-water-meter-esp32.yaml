@@ -12,19 +12,24 @@ esphome:
   name_add_mac_suffix: true
   includes:
     - my_custom_component.h
-  # platformio_options:
-  # board_build.flash_mode: "qio"
 
   # This will allow for (future) project identification,
   # configuration and updates.
   project:
     name: esphome.muino-water-meter
-    version: "1.0.2"
+    version: "1.1.0"
 
 esp32:
-  board: seeed_xiao_esp32c3
+  board: seeed_xiao_esp32c3 # esp32-c3-devkitm-1
   framework:
     type: arduino
+
+
+globals:
+  - id: polling_time_sec
+    type: int
+     # 5*60 = 5min
+    initial_value: "300"
 
 sensor:
   - platform: custom
@@ -47,6 +52,8 @@ sensor:
         accuracy_decimals: 2
 
 # To be able to get logs from the device via serial and api.
+# logger:
+#   hardware_uart: UART1
 logger:
   level: NONE
 # API is a requirement of the dashboard import.
