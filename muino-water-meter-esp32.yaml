@@ -10,19 +10,26 @@ esphome:
   # Automatically add the mac address to the name
   # so you can use a single firmware for all devices
   name_add_mac_suffix: true
-  includes:
-    - my_custom_component.h
+  # includes:
+  #   - my_custom_component.h
 
   # This will allow for (future) project identification,
   # configuration and updates.
   project:
     name: esphome.muino-water-meter
-    version: "1.0.0"
+    version: "1.1.0"
 
 esp32:
-  board: seeed_xiao_esp32c3
+  board: seeed_xiao_esp32c3 # esp32-c3-devkitm-1
   framework:
     type: arduino
+
+
+globals:
+  - id: polling_time_sec
+    type: int
+     # 5*60 = 5min
+    initial_value: "300"
 
 sensor:
   - platform: custom
@@ -45,8 +52,10 @@ sensor:
         accuracy_decimals: 2
 
 # To be able to get logs from the device via serial and api.
+# logger:
+#   hardware_uart: UART1
 logger:
-
+  level: NONE
 # API is a requirement of the dashboard import.
 api:
 
@@ -56,28 +65,19 @@ ota:
 # This should point to the public location of this yaml file.
 dashboard_import:
   package_import_url: github://martijnvwezel/watermeter-esphome/muino-water-meter-esp32.yaml@main
-
+  
 external_components:
-  # Automatically download the components from GitHub:
-  - source: github://martijnvwezel/watermeter-esphome
-    components:
-      - components/muino_water_meter.h:muino_water_meter.h
+  - source:  github://martijnvwezel/watermeter-esphome
+    components: 
+      - my_custom_component.h
 
 wifi:
   # Set up a wifi access point using the device name above
   ap:
-    password: "12345678"
 
 # In combination with the `ap` this allows the user
 # to provision wifi credentials to the device.
 captive_portal:
-
-##########################################################
-# Most projects should not remove anything from above here
-# and should just modify the name, project name/version 
-# and git url for the dashboard_import
-##########################################################
-
 
 # Sets up Bluetooth LE (Only on ESP32) to allow the user
 # to provision wifi credentials to the device.
