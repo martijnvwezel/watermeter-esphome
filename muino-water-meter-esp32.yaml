@@ -69,7 +69,7 @@ dashboard_import:
 external_components:
   - source:  github://martijnvwezel/watermeter-esphome
     components: 
-      - muino_water_meter.h
+      - muino_water_sensor.muino_water_meter.h
 
 wifi:
   # Set up a wifi access point using the device name above
