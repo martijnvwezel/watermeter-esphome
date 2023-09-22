@@ -10,8 +10,8 @@ esphome:
   # Automatically add the mac address to the name
   # so you can use a single firmware for all devices
   name_add_mac_suffix: true
-  includes:
-    - my_custom_component.h
+  # includes:
+  #   - my_custom_component.h
 
   # This will allow for (future) project identification,
   # configuration and updates.
@@ -65,7 +65,13 @@ ota:
 # This should point to the public location of this yaml file.
 dashboard_import:
   package_import_url: github://martijnvwezel/watermeter-esphome/muino-water-meter-esp32.yaml@main
+  
 
+
+external_components:
+  - source:  github://martijnvwezel/watermeter-esphome/my_custom_component.h@main
+    components: 
+      - my_custom_component.h
 wifi:
   # Set up a wifi access point using the device name above
   ap:
