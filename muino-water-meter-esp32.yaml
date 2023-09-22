@@ -66,12 +66,11 @@ ota:
 dashboard_import:
   package_import_url: github://martijnvwezel/watermeter-esphome/muino-water-meter-esp32.yaml@main
   
-
-
 external_components:
   - source:  github://martijnvwezel/watermeter-esphome
     components: 
       - my_custom_component.h
+
 wifi:
   # Set up a wifi access point using the device name above
   ap:
