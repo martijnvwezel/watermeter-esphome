@@ -69,7 +69,7 @@ dashboard_import:
 
 
 external_components:
-  - source:  github://martijnvwezel/watermeter-esphome/my_custom_component.h@main
+  - source:  github://martijnvwezel/watermeter-esphome
     components: 
       - my_custom_component.h
 wifi:
