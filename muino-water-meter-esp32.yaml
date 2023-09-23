@@ -10,8 +10,8 @@ esphome:
   # Automatically add the mac address to the name
   # so you can use a single firmware for all devices
   name_add_mac_suffix: true
-  includes:
-    - muino_water_meter.h
+  # includes:
+  #   - https://github.com/martijnvwezel/watermeter-esphome.git/muino_water_meter.h
 
   # This will allow for (future) project identification,
   # configuration and updates.
@@ -65,7 +65,16 @@ ota:
 # This should point to the public location of this yaml file.
 dashboard_import:
   package_import_url: github://martijnvwezel/watermeter-esphome/muino-water-meter-esp32.yaml@main
-  
+
+
+packages:
+  # Git repo examples
+  remote_package:
+    url: https://github.com/martijnvwezel/watermeter-esphome
+    ref: main # optional
+    files: [muino-water-meter-esp32.yaml]
+    refresh: 1d # optional
+
 # external_components:
 #   - source:  github://martijnvwezel/watermeter-esphome@main
 #     components: 
