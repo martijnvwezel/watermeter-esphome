@@ -10,14 +10,14 @@ esphome:
   # Automatically add the mac address to the name
   # so you can use a single firmware for all devices
   name_add_mac_suffix: true
-  includes:
-    - muino_water_meter.h
+  # includes:
+  #   - muino_water_meter.h
 
   # This will allow for (future) project identification,
   # configuration and updates.
   project:
     name: esphome.muino-water-meter
-    version: "1.1.0"
+    version: "1.1.1"
 
 esp32:
   board: seeed_xiao_esp32c3 # esp32-c3-devkitm-1
@@ -66,10 +66,10 @@ ota:
 dashboard_import:
   package_import_url: github://martijnvwezel/watermeter-esphome/muino-water-meter-esp32.yaml@main
   
-# external_components:
-#   - source:  github://martijnvwezel/watermeter-esphome@main
-#     components: 
-#       - muino_water_meter.h
+external_components:
+  - source:  github://martijnvwezel/watermeter-esphome@main
+    components: 
+      - muino_water_meter.h
 
 wifi:
   # Set up a wifi access point using the device name above
