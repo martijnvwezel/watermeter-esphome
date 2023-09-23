@@ -11,13 +11,13 @@ esphome:
   # so you can use a single firmware for all devices
   name_add_mac_suffix: true
   includes:
-    - components/muino_water_meter/muino_water_meter.h
+    - muino_water_meter.h
 
   # This will allow for (future) project identification,
   # configuration and updates.
   project:
     name: esphome.muino-water-meter
-    version: "1.1.1"
+    version: "1.1.2"
 
 esp32:
   board: seeed_xiao_esp32c3 # esp32-c3-devkitm-1
