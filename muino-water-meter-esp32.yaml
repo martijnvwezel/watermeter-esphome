@@ -11,7 +11,6 @@ esphome:
   # so you can use a single firmware for all devices
   name_add_mac_suffix: true
   includes:
-    - muino_water_meter.h
 
   # This will allow for (future) project identification,
   # configuration and updates.
@@ -19,8 +18,9 @@ esphome:
     name: esphome.muino-water-meter
     version: "2.0.1"
 
+
 esp32:
-  board: seeed_xiao_esp32c3
+  board: seeed_xiao_esp32c3 # esp32-c3-devkitm-1
   framework:
     type: esp-idf
 
@@ -63,7 +63,6 @@ output:
   - platform: gpio
     pin: 6
     id: sensor_power
-
 
 
 sensor:
@@ -184,6 +183,7 @@ sensor:
     unit_of_measurement: "lx"
     accuracy_decimals: 0 
     lambda: |-
+
       return id(light_sensor_c_light).state;
 
 
@@ -389,7 +389,6 @@ globals:
 logger:
   hardware_uart: USB_SERIAL_JTAG
   level: INFO
-
 
 # API is a requirement of the dashboard import.
 api:
