@@ -2,15 +2,13 @@
 substitutions:
   name: "muino-water-meter"
 
-# platformio_options:
-#   board_build.flash_mode: "qio"
-
 esphome:
   name: "${name}"
   # Automatically add the mac address to the name
   # so you can use a single firmware for all devices
   name_add_mac_suffix: true
-  includes:
+  platformio_options:
+    board_build.flash_mode: "dio"
 
   # This will allow for (future) project identification,
   # configuration and updates.
@@ -18,12 +16,10 @@ esphome:
     name: esphome.muino-water-meter
     version: "2.0.1"
 
-
 esp32:
   board: seeed_xiao_esp32c3 # esp32-c3-devkitm-1
   framework:
     type: esp-idf
-
 
 # triggers reading adc values and iterating algoritm
 interval:
