@@ -10,7 +10,6 @@ esphome:
   platformio_options:
     board_build.flash_mode: "dio"
 
-
   # This will allow for (future) project identification,
   # configuration and updates.
   project:
@@ -18,7 +17,7 @@ esphome:
     version: "2.0.1"
 
 esp32:
-  board: seeed_xiao_esp32c3 # esp32-c3-devkitm-1
+  board: seeed_xiao_esp32c3
   framework:
     type: esp-idf
 
@@ -33,7 +32,6 @@ interval:
     then:
       - component.update: report_liters
       - component.update: report_liters_rounded
-      #- lambda: ESP_LOGI("main", "Script is running!");
       - logger.log:
           level: INFO
           tag: max_average
