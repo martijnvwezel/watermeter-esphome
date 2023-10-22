@@ -11,51 +11,385 @@ esphome:
   # so you can use a single firmware for all devices
   name_add_mac_suffix: true
   includes:
-    - my_custom_component.h
 
   # This will allow for (future) project identification,
   # configuration and updates.
   project:
     name: esphome.muino-water-meter
-    version: "1.1.0"
+    version: "2.0.1"
+
 
 esp32:
   board: seeed_xiao_esp32c3 # esp32-c3-devkitm-1
   framework:
-    type: arduino
+    type: esp-idf
+
+
+# triggers reading adc values and iterating algoritm
+interval:
+  - interval: 100ms
+    then:
+      - output.turn_on: sensor_power
+      - component.update: light_sensor_a_dark
+
+  - interval: 1s
+    then:
+      - component.update: report_liters
+      - component.update: report_liters_rounded
+      #- lambda: ESP_LOGI("main", "Script is running!");
+      - logger.log:
+          level: INFO
+          tag: max_average
+          format: "a:%d b:%d c:%d"
+          args: [ 'id(max_a)', 'id(max_b)' , 'id(max_c)']
+      - logger.log:
+          level: INFO
+          tag: min_average
+          format: "a:%d b:%d c:%d"
+          args: [ 'id(min_a)', 'id(min_b)' , 'id(min_c)']
+
+# Toggle switch
+switch:
+  - platform: template 
+    optimistic: true
+    id: fastupdate
+    name: Speed mode
+    icon: "mdi:emoticon-cool-outline"
+
+output:
+  - platform: gpio
+    pin: 7
+    id: led
+  - platform: gpio
+    pin: 6
+    id: sensor_power
+
+
+sensor:
+  - platform: adc
+    pin: 2
+    name: "light_sensor_a_dark"
+    id: light_sensor_a_dark
+    raw: true
+    internal: true
+    on_value:
+      then:
+        component.update: light_sensor_b_dark
+  - platform: adc
+    pin: 3
+    id: light_sensor_b_dark
+    name: "light_sensor_b_dark"
+    raw: true
+    internal: true
+    on_value:
+      then:
+        component.update: light_sensor_c_dark
+    
+  - platform: adc
+    pin: 4
+    id: light_sensor_c_dark
+    name: "light_sensor_c_dark"
+    raw: true
+    internal: true
+    on_value:
+      then:
+        - output.turn_on: led
+        - delay: 50ms
+        - component.update: light_sensor_a_light
+
+  - platform: adc
+    pin: 2
+    name: "light_sensor_a_light"
+    id: light_sensor_a_light
+    raw: true
+    internal: true
+    on_value:
+      then:
+        component.update: light_sensor_b_light
+
+  - platform: adc
+    pin: 3
+    id: light_sensor_b_light
+    name: "light_sensor_b_light"
+    raw: true
+    internal: true
+    on_value:
+      then:
+        - component.update: light_sensor_c_light
+    
+  - platform: adc
+    pin: 4
+    id: light_sensor_c_light
+    name: "light_sensor_c_light"
+    raw: true
+    internal: true
+    on_value:
+      then:
+        - output.turn_off: led
+        #- output.turn_off: sensor_power
+        - component.update: phase_coarse
+
+# dark sensor values
+  - platform: template
+    name: "sensa_dark"
+    id: ad
+    device_class: "ILLUMINANCE"
+    unit_of_measurement: "lx"
+    accuracy_decimals: 0 
+    lambda: |-
+      return id(light_sensor_a_dark).state;
+
+  - platform: template
+    name: "sensb_dark"
+    id: bd
+    device_class: "ILLUMINANCE"
+    unit_of_measurement: "lx"
+    accuracy_decimals: 0 
+    lambda: |-
+      return id(light_sensor_b_dark).state;
+
+  - platform: template
+    name: "sensc_dark"
+    id: cd
+    device_class: "ILLUMINANCE"
+    unit_of_measurement: "lx"
+    accuracy_decimals: 0 
+    lambda: |-
+      return id(light_sensor_c_dark).state;
+
+# sensor values
+  - platform: template
+    name: "sensa"
+    id: al
+    device_class: "ILLUMINANCE"
+    unit_of_measurement: "lx"
+    accuracy_decimals: 0 
+    lambda: |-
+      return id(light_sensor_a_light).state;
+
+  - platform: template
+    name: "sensb"
+    id: bl
+    device_class: "ILLUMINANCE"
+    unit_of_measurement: "lx"
+    accuracy_decimals: 0 
+    lambda: |-
+      return id(light_sensor_b_light).state;
+
+  - platform: template
+    name: "sensc"
+    id: cl
+    device_class: "ILLUMINANCE"
+    unit_of_measurement: "lx"
+    accuracy_decimals: 0 
+    lambda: |-
+
+      return id(light_sensor_c_light).state;
+
+
+# substracted values
+  - platform: template
+    name: "sensa_sub"
+    id: as
+    device_class: "ILLUMINANCE"
+    unit_of_measurement: "lx"
+    accuracy_decimals: 0 
+    lambda: |-
+    
+      return id(aa);
+
+  - platform: template
+    name: "sensb_sub"
+    id: bs
+    device_class: "ILLUMINANCE"
+    unit_of_measurement: "lx"
+    accuracy_decimals: 0 
+    lambda: |-
+      return id(bb);
+
+  - platform: template
+    name: "sensc_sub"
+    id: cs
+    device_class: "ILLUMINANCE"
+    unit_of_measurement: "lx"
+    accuracy_decimals: 0 
+    lambda: |-
+      return id(cc);
+
+# liters
+  - platform: template
+    name: "water_liter_sensor"
+    id: report_liters
+    device_class: "WATER"
+    unit_of_measurement: "mL"
+    accuracy_decimals: 0 
+    state_class: "total"
+    lambda: |-
+      return (int)(1000*(id(liters)+id(phase)/6.0));
+
+  - platform: template
+    name: "liters"
+    id: report_liters_rounded
+    device_class: "WATER"
+    unit_of_measurement: "L"
+    accuracy_decimals: 0 
+    state_class: "total"
+    lambda: |-
+      return id(liters);
+
+  - platform: template
+    id: phase_coarse
+    device_class: "water"
+    state_class: "total"
+    internal: true
+    on_value:
+      if:
+        condition:
+      # Same syntax for is_off
+          switch.is_on: fastupdate
+        then:
+          - component.update: report_liters
+          - component.update: report_liters_rounded
+          - component.update: al
+          - component.update: bl
+          - component.update: cl
+          - component.update: ad
+          - component.update: bd
+          - component.update: cd
+          - component.update: as
+          - component.update: bs
+          - component.update: cs
+    lambda: |-
+      int a = id(light_sensor_a_light).state - id(light_sensor_a_dark).state;
+      int b = id(light_sensor_b_light).state - id(light_sensor_b_dark).state;
+      int c = id(light_sensor_c_light).state - id(light_sensor_c_dark).state;
+      static bool first = true;
+
+      id(aa) = a;
+      id(bb) = b;
+      id(cc) = c;
+      
+      int max = id(upper_bound);
+      int min = id(lower_bound);
+
+      if (a < min || b < min || c < min ){
+        ESP_LOGW("light_level", "Too dark");
+        return 0;
+      }
+      if (a > max || b > max || c > max){
+        ESP_LOGW("light_level", "Too bright");
+        return 0;
+      }
+      if (first){
+        id(min_a)= a;
+        id(min_b)= b;
+        id(min_c)= c;
+        id(max_a)= 0;
+        id(max_b)= 0;
+        id(max_c)= 0;
+        first = false;
+        return 0;
+      }
+
+
+      float alpha_cor = 0.001;
+      if (id(liters) < 2) {
+          alpha_cor = 0.1; // when 2 liter not found correct harder
+          if (id(liters) < 0) {
+              id(liters) = 0;
+          }
+      }
+      auto mini_average = [](float x, float y, float alpha_cor){
+        if ((x + 5) <= y && y > 10) {
+            return x;
+        } else {
+            return (1 - alpha_cor) * x + alpha_cor * y;
+        }
+      };
+      auto max_average = [](int x, int y, float alpha_cor) {
+        // ESP_LOGI("main", "x: %d, y: %d, a: %f",x,y,alpha_cor);
+        if ((x - 5) >= y && y < 2500) {
+            return x;
+        } else {
+
+            return (int)((1 - alpha_cor) * (float)x + alpha_cor * (float)y);
+        }
+      };
+      id(min_a)= mini_average(id(min_a), a, alpha_cor);
+      id(min_b)= mini_average(id(min_b), b, alpha_cor);
+      id(min_c)= mini_average(id(min_c), c, alpha_cor);
+      id(max_a)= max_average(id(max_a), a, alpha_cor);
+      id(max_b)= max_average(id(max_b), b, alpha_cor);
+      id(max_c)= max_average(id(max_c), c, alpha_cor);
+
+      a -= (id(min_a) + id(max_a)) >> 1;
+      b -= (id(min_b) + id(max_b)) >> 1;
+      c -= (id(min_c) + id(max_c)) >> 1;
+      short    pn[5];
+      if (id(phase) & 1)
+          pn[0] = a + a - b - c, pn[1] = b + b - a - c,
+          pn[2] = c + c - a - b; // same
+      else
+          pn[0]     = b + c - a - a, // less
+              pn[1] = a + c - b - b, // more
+              pn[2] = a + b - c - c; // same
+      pn[3] = pn[0], pn[4] = pn[1];
+      
+      short i = id(phase) > 2 ? id(phase) - 3 : id(phase);
+      if (pn[i + 2] < pn[i + 1] && pn[i + 2] < pn[i]){
+          if (pn[i + 1] > pn[i])
+              id(phase)++;
+          else
+              id(phase)--;
+      }
+      if (id(phase) == 6)
+          id(liters)++, id(phase) = 0;
+      else if (id(phase) == -1)
+          id(liters)--, id(phase) = 5;
+          
+      return id(liters);
 
 
 globals:
-  - id: polling_time_sec
+  - id: phase
     type: int
-     # 5*60 = 5min
-    initial_value: "300"
+    initial_value: "0"
+  - id: liters
+    type: int
+    initial_value: "0"
+  - id: aa
+    type: int
+    initial_value: "0"
+  - id: bb
+    type: int
+    initial_value: "0"
+  - id: cc
+    type: int
+    initial_value: "0"
+  - id: max_a
+    type: int
+  - id: max_b
+    type: int
+  - id: max_c
+    type: int
+  - id: min_a
+    type: int
+  - id: min_b
+    type: int
+  - id: min_c
+    type: int
+  - id: upper_bound
+    initial_value: "1000"
+    type: int
+  - id: lower_bound
+    type: int
+    initial_value: "10"
 
-sensor:
-  - platform: custom
-    lambda: |-
-      auto my_custom = new MyCustomSensor();
-      App.register_component(my_custom);
-      return {my_custom->water_liter_sensor, my_custom->sensa, my_custom->sensb, my_custom->sensc};
-
-    sensors:
-      - name: "water_liter_sensor"
-        unit_of_measurement: L
-        state_class: total_increasing
-        device_class: water
-        accuracy_decimals: 2
-      - name: "sensa"
-        accuracy_decimals: 2
-      - name: "sensb"
-        accuracy_decimals: 2
-      - name: "sensc"
-        accuracy_decimals: 2
-
-# To be able to get logs from the device via serial and api.
-# logger:
-#   hardware_uart: UART1
+# Make sure logging is correct for solving platform IO bugs
 logger:
-  level: NONE
+  hardware_uart: USB_SERIAL_JTAG
+  level: INFO
+
 # API is a requirement of the dashboard import.
 api:
 
