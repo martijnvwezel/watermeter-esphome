@@ -1,5 +1,16 @@
 #include "esphome.h"
 
+
+// //GPIO
+// #define D4 6
+// #define D5 7
+
+// // mapping to match other feathers and also in order
+// #define A0 2 
+// #define A1 3
+// #define A2 4
+// #define A3 5
+
 #define SENS_A A0
 #define SENS_B A1
 #define SENS_C A2
@@ -15,7 +26,9 @@
 #define PI_3 1.0471975512
 #define PI2_3 2.09439510239
 
-#define POLLING_TIME_MSEC (uint32_t) id(polling_time_sec) * 1000
+// #define POLLING_TIME_MSEC (uint32_t) id(polling_time_sec) * 1000
+#define POLLING_TIME_MSEC 5*60*1000 // 5min
+
 
 static const char* TAG = "Muino_water_sensor";
 struct state_t {
