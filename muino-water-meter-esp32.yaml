@@ -10,6 +10,7 @@ esphome:
   platformio_options:
     board_build.flash_mode: "dio"
 
+
   # This will allow for (future) project identification,
   # configuration and updates.
   project:
@@ -59,7 +60,6 @@ output:
   - platform: gpio
     pin: 6
     id: sensor_power
-
 
 sensor:
   - platform: adc
