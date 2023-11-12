@@ -219,10 +219,10 @@ sensor:
     accuracy_decimals: 0 
     state_class: "total"
     lambda: |-
-    if (id(liters) < 2){
-      return 0;
-    }    
-    return (int)(1000*(id(liters)+id(phase)/6.0));  
+      if (id(liters) < 2){
+        return 0;
+      }    
+      return (int)(1000*(id(liters)+id(phase)/6.0));  
 
   - platform: template
     name: "liters"
