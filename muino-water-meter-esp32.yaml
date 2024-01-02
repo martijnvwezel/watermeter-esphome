@@ -14,7 +14,7 @@ esphome:
   # configuration and updates.
   project:
     name: esphome.muino-water-meter
-    version: "2.0.1"
+    version: "2.0.3"
 
 esp32:
   board: seeed_xiao_esp32c3
@@ -25,6 +25,8 @@ esp32:
 interval:
   - interval: 100ms
     then:
+      - component.update: report_liters
+      - component.update: report_liters_rounded
       - output.turn_on: sensor_power
       - component.update: light_sensor_a_dark
 
@@ -61,7 +63,10 @@ output:
 
 sensor:
   - platform: adc
-    pin: 2
+    pin: 
+      number: 2
+      allow_other_uses: true
+      ignore_strapping_warning: true
     name: "light_sensor_a_dark"
     id: light_sensor_a_dark
     raw: true
@@ -70,7 +75,9 @@ sensor:
       then:
         component.update: light_sensor_b_dark
   - platform: adc
-    pin: 3
+    pin: 
+      number: 3
+      allow_other_uses: true
     id: light_sensor_b_dark
     name: "light_sensor_b_dark"
     raw: true
@@ -80,7 +87,9 @@ sensor:
         component.update: light_sensor_c_dark
     
   - platform: adc
-    pin: 4
+    pin: 
+      number: 4
+      allow_other_uses: true
     id: light_sensor_c_dark
     name: "light_sensor_c_dark"
     raw: true
@@ -92,7 +101,11 @@ sensor:
         - component.update: light_sensor_a_light
 
   - platform: adc
-    pin: 2
+    pin: 
+      number: 2
+      allow_other_uses: true
+
+      ignore_strapping_warning: true
     name: "light_sensor_a_light"
     id: light_sensor_a_light
     raw: true
@@ -102,7 +115,9 @@ sensor:
         component.update: light_sensor_b_light
 
   - platform: adc
-    pin: 3
+    pin: 
+      number: 3
+      allow_other_uses: true
     id: light_sensor_b_light
     name: "light_sensor_b_light"
     raw: true
@@ -112,7 +127,9 @@ sensor:
         - component.update: light_sensor_c_light
     
   - platform: adc
-    pin: 4
+    pin: 
+      number: 4
+      allow_other_uses: true
     id: light_sensor_c_light
     name: "light_sensor_c_light"
     raw: true
@@ -232,6 +249,9 @@ sensor:
     accuracy_decimals: 0 
     state_class: "total"
     lambda: |-
+      if (id(liters) < 2){
+        return 0;
+      }  
       return id(liters);
 
   - platform: template
@@ -385,7 +405,7 @@ globals:
 # Make sure logging is correct for solving platform IO bugs
 logger:
   hardware_uart: USB_SERIAL_JTAG
-  level: INFO
+  level: ERROR
 
 # API is a requirement of the dashboard import.
 api:
@@ -404,3 +424,10 @@ wifi:
 # In combination with the `ap` this allows the user
 # to provision wifi credentials to the device.
 captive_portal:
+
+# Sets up Bluetooth LE (Only on ESP32) to allow the user
+# to provision wifi credentials to the device.
+# save some energy
+# esp32_improv:
+#   authorizer: none
+
