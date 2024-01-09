@@ -9,7 +9,7 @@ The Muino Smart Water Meter is a **single-board** device that measures water con
 
 # Where to buy?
 * If you would like the watermeter go to: [webshop](https://www.tindie.com/products/muino/smart-water-meter-reader/)
-* If you would like the watermeter go to: [webshop](https://www.tindie.com/products/muino/3-phase-muino-light-sensor-encoder/)
+* You want a sensor to play with the DIY version go to: [webshop](https://www.tindie.com/products/muino/3-phase-muino-light-sensor-encoder/)
 * For big orders please make a request: [email](mail:martijnvwezel@muino.nl)
 
 # First time user
