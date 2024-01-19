@@ -234,7 +234,7 @@ sensor:
     device_class: "WATER"
     unit_of_measurement: "mL"
     accuracy_decimals: 0 
-    state_class: "total"
+    state_class: total_increasing
     lambda: |-
       if (id(liters) < 2){
         return 0;
@@ -247,7 +247,7 @@ sensor:
     device_class: "WATER"
     unit_of_measurement: "L"
     accuracy_decimals: 0 
-    state_class: "total"
+    state_class: total_increasing
     lambda: |-
       if (id(liters) < 2){
         return 0;
