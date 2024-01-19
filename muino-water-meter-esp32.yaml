@@ -231,7 +231,7 @@ sensor:
   - platform: template
     name: "water_liter_sensor"
     id: report_liters
-    device_class: "WATER"
+    device_class: "water"
     unit_of_measurement: "mL"
     accuracy_decimals: 0 
     state_class: total_increasing
@@ -244,7 +244,7 @@ sensor:
   - platform: template
     name: "liters"
     id: report_liters_rounded
-    device_class: "WATER"
+    device_class: "water"
     unit_of_measurement: "L"
     accuracy_decimals: 0 
     state_class: total_increasing
