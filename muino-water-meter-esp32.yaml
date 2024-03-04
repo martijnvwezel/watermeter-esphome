@@ -1,3 +1,5 @@
+
+
 # These substitutions allow the end user to override certain values
 substitutions:
   name: "muino-water-meter"
@@ -25,25 +27,37 @@ esp32:
 interval:
   - interval: 100ms
     then:
-      - component.update: report_liters
-      - component.update: report_liters_rounded
+      # - component.update: report_liters
+      # - component.update: report_liters_rounded
       - output.turn_on: sensor_power
       - component.update: light_sensor_a_dark
-
-  - interval: 1s
+  - interval: 10s # Check every 10 seconds to reduce load, adjust as needed
     then:
-      - component.update: report_liters
-      - component.update: report_liters_rounded
-      - logger.log:
-          level: INFO
-          tag: max_average
-          format: "a:%d b:%d c:%d"
-          args: [ 'id(max_a)', 'id(max_b)' , 'id(max_c)']
-      - logger.log:
-          level: INFO
-          tag: min_average
-          format: "a:%d b:%d c:%d"
-          args: [ 'id(min_a)', 'id(min_b)' , 'id(min_c)']
+      - lambda: |-
+          if ((millis() - id(last_water_flow)) >= 300000) { // 300,000 ms = 5 minutes
+            // Update 'report_liters' and 'report_liters_rounded'
+            id(report_liters).update();
+            id(report_liters_rounded).update();
+          }
+  # - interval: 1s
+  #   then:
+  #     # - component.update: report_liters
+  #     # - component.update: report_liters_rounded
+  #     - logger.log:
+  #         level: INFO
+  #         tag: time
+  #         format: "o:%d"
+  #         args: [ 'id(last_water_flow)']
+  #     - logger.log:
+  #         level: INFO
+  #         tag: max_average
+  #         format: "a:%d b:%d c:%d"
+  #         args: [ 'id(max_a)', 'id(max_b)' , 'id(max_c)']
+  #     - logger.log:
+  #         level: INFO
+  #         tag: min_average
+  #         format: "a:%d b:%d c:%d"
+  #         args: [ 'id(min_a)', 'id(min_b)' , 'id(min_c)']
 
 # Toggle switch
 switch:
@@ -139,6 +153,7 @@ sensor:
         - output.turn_off: led
         #- output.turn_off: sensor_power
         - component.update: phase_coarse
+  # keep track last time updated
 
 # dark sensor values
   - platform: template
@@ -328,7 +343,6 @@ sensor:
         if ((x - 5) >= y && y < 2500) {
             return x;
         } else {
-
             return (int)((1 - alpha_cor) * (float)x + alpha_cor * (float)y);
         }
       };
@@ -354,6 +368,7 @@ sensor:
       
       short i = id(phase) > 2 ? id(phase) - 3 : id(phase);
       if (pn[i + 2] < pn[i + 1] && pn[i + 2] < pn[i]){
+          id(last_water_flow) = millis();
           if (pn[i + 1] > pn[i])
               id(phase)++;
           else
@@ -368,6 +383,10 @@ sensor:
 
 
 globals:
+  - id: last_water_flow
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
   - id: phase
     type: int
     initial_value: "0"
