@@ -25,17 +25,24 @@ The Muino Smart Water Meter is a **single-board** device that measures water con
 # First time user
 Thank you for buying the Muino Water Meter Reader :). So here I tried to explain the steps what to do for your installation!
 
-### What do you need
+## What do you need
+
 * USB-C cable that can power de water-meter
 * Some device with WiFi for adopting it your network
 * Access to your Home-assistant
 
-### Installation steps
+## Installation steps
+
 1. Place the Muino Water-Meter Reader to your water-meter, I and others use M2.5/M4 screws/bolts to attach. It will be firm in the PCB as attended. For some meters there are no holes and those people use tie-wraps or just tape..
 2. Connect the USB-C power
 3. Go to your phone/wifi-device and connect to the water-meter WiFi (if you need a password: `12345678`)
 4. Go in Home assistant to your devices and adopt the Watermeter
 
+## Water Sensor Update Protocol
+
+1. **After restart**: Upon restart, a zero value is sent to inform the home assistant that the sensor has been reset.
+2. **Calibration**: The sensor calibrates during the first 2 liters of water usage.
+3. **Sending Updates**: After calibration, the sensor sends updates to the home assistant system. It waits until it detects 2 liters of water usage and then pauses for 1 minute before sending the update. This prevents interruptions during activities like showering.
 
 #### Don't forget to Add Muino Water-Meter Reader, to your HA Energy-dashboard
 

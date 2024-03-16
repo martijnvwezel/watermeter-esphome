@@ -12,7 +12,42 @@ The Muino Smart Water Meter is a **single-board** device that measures water con
 
 # Where to buy?
 * If you would like the watermeter go to: [webshop](https://www.tindie.com/products/muino/smart-water-meter-reader/)
-* For big orders please make a request: [martijnvwezel@muino.nl](mailto:martijnvwezel@muino.nl)
+* You want a sensor to play with the DIY version go to: [webshop](https://www.tindie.com/products/muino/3-phase-muino-light-sensor-encoder/)
+* For big orders please make a request: [email](mail:martijnvwezel@muino.nl)
+* My webshop is located at [muino.nl](https://muino.nl). However, using Tindie for purchases results in marketing elements being displayed on my website. Consequently, I haven't dedicated time to enhancing the visual appeal of my site.
+
+### Comfirmed supported devices
+* KiWa V200 (Designed for)
+* Honeywell v200 (Designed for)
+* KiWa R400 (Look to Sensus 620)
+* Sensus 620 (needs slight enlarging of two holes, and placement looks maybe less nice)
+* Elster Honeywell (some)
+* Itron Actaris Schlumberger
+* You can always donate to let my create a watermeter compatibility..
+
+# First time user
+Thank you for buying the Muino Water Meter Reader :). So here I tried to explain the steps what to do for your installation!
+
+## What do you need
+
+* USB-C cable that can power de water-meter
+* Some device with WiFi for adopting it your network
+* Access to your Home-assistant
+
+## Installation steps
+
+1. Place the Muino Water-Meter Reader to your water-meter, I and others use M2.5/M4 screws/bolts to attach. It will be firm in the PCB as attended. For some meters there are no holes and those people use tie-wraps or just tape..
+2. Connect the USB-C power
+3. Go to your phone/wifi-device and connect to the water-meter WiFi (if you need a password: `12345678`)
+4. Go in Home assistant to your devices and adopt the Watermeter
+
+## Water Sensor Update Protocol
+
+1. **After restart**: Upon restart, a zero value is sent to inform the home assistant that the sensor has been reset.
+2. **Calibration**: The sensor calibrates during the first 2 liters of water usage.
+3. **Sending Updates**: After calibration, the sensor sends updates to the home assistant system. It waits until it detects 2 liters of water usage and then pauses for 1 minute before sending the update. This prevents interruptions during activities like showering.
+
+#### Don't forget to Add Muino Water-Meter Reader, to your HA Energy-dashboard
 
 # Development
 ``` bash

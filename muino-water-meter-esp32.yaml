@@ -1,3 +1,5 @@
+
+
 # These substitutions allow the end user to override certain values
 substitutions:
   name: "muino-water-meter"
@@ -25,25 +27,41 @@ esp32:
 interval:
   - interval: 100ms
     then:
-      - component.update: report_liters
-      - component.update: report_liters_rounded
+      # - component.update: report_liters
+      # - component.update: report_liters_rounded
       - output.turn_on: sensor_power
-      - component.update: light_sensor_a_dark
+      - component.update: light_sensor_a_dark     
+      - lambda: |-     
+          if ((millis() - id(last_water_flow)) >= 60000) { // 300,000 ms = 5 minutes
+            // Update 'report_liters' and 'report_liters_rounded'
+            id(last_reported_liters__mili) = (int)(1000*(id(liters)+id(phase)/6.0)); 
+            id(last_reported_liters) = id(liters);
+            id(last_water_flow) = millis();
+          }
 
-  - interval: 1s
-    then:
-      - component.update: report_liters
-      - component.update: report_liters_rounded
-      - logger.log:
-          level: INFO
-          tag: max_average
-          format: "a:%d b:%d c:%d"
-          args: [ 'id(max_a)', 'id(max_b)' , 'id(max_c)']
-      - logger.log:
-          level: INFO
-          tag: min_average
-          format: "a:%d b:%d c:%d"
-          args: [ 'id(min_a)', 'id(min_b)' , 'id(min_c)']
+  # - interval: 10s # Check every 10 seconds to reduce load, adjust as needed
+  #   then:
+  #     - lambda: |-
+
+  # - interval: 1s
+  #   then:
+  #     # - component.update: report_liters
+  #     # - component.update: report_liters_rounded
+  #     - logger.log:
+  #         level: INFO
+  #         tag: time
+  #         format: "o:%d"
+  #         args: [ 'id(last_water_flow)']
+  # #     - logger.log:
+  #         level: INFO
+  #         tag: max_average
+  #         format: "a:%d b:%d c:%d"
+  #         args: [ 'id(max_a)', 'id(max_b)' , 'id(max_c)']
+  #     - logger.log:
+  #         level: INFO
+  #         tag: min_average
+  #         format: "a:%d b:%d c:%d"
+  #         args: [ 'id(min_a)', 'id(min_b)' , 'id(min_c)']
 
 # Toggle switch
 switch:
@@ -139,10 +157,13 @@ sensor:
         - output.turn_off: led
         #- output.turn_off: sensor_power
         - component.update: phase_coarse
+  # keep track last time updated
 
 # dark sensor values
   - platform: template
     name: "sensa_dark"
+    force_update: false
+    internal: true
     id: ad
     device_class: "ILLUMINANCE"
     unit_of_measurement: "lx"
@@ -153,6 +174,8 @@ sensor:
   - platform: template
     name: "sensb_dark"
     id: bd
+    force_update: false
+    internal: true
     device_class: "ILLUMINANCE"
     unit_of_measurement: "lx"
     accuracy_decimals: 0 
@@ -161,6 +184,8 @@ sensor:
 
   - platform: template
     name: "sensc_dark"
+    force_update: false
+    internal: true
     id: cd
     device_class: "ILLUMINANCE"
     unit_of_measurement: "lx"
@@ -171,6 +196,8 @@ sensor:
 # sensor values
   - platform: template
     name: "sensa"
+    force_update: false
+    internal: true
     id: al
     device_class: "ILLUMINANCE"
     unit_of_measurement: "lx"
@@ -180,6 +207,8 @@ sensor:
 
   - platform: template
     name: "sensb"
+    force_update: false
+    internal: true
     id: bl
     device_class: "ILLUMINANCE"
     unit_of_measurement: "lx"
@@ -189,12 +218,13 @@ sensor:
 
   - platform: template
     name: "sensc"
+    force_update: false
+    internal: true
     id: cl
     device_class: "ILLUMINANCE"
     unit_of_measurement: "lx"
     accuracy_decimals: 0 
     lambda: |-
-
       return id(light_sensor_c_light).state;
 
 
@@ -202,6 +232,8 @@ sensor:
   - platform: template
     name: "sensa_sub"
     id: as
+    force_update: false
+    internal: true
     device_class: "ILLUMINANCE"
     unit_of_measurement: "lx"
     accuracy_decimals: 0 
@@ -211,6 +243,8 @@ sensor:
 
   - platform: template
     name: "sensb_sub"
+    force_update: false
+    internal: true
     id: bs
     device_class: "ILLUMINANCE"
     unit_of_measurement: "lx"
@@ -220,6 +254,8 @@ sensor:
 
   - platform: template
     name: "sensc_sub"
+    force_update: false
+    internal: true
     id: cs
     device_class: "ILLUMINANCE"
     unit_of_measurement: "lx"
@@ -231,6 +267,7 @@ sensor:
   - platform: template
     name: "water_liter_sensor"
     id: report_liters
+    force_update: false
     device_class: "water"
     unit_of_measurement: "mL"
     accuracy_decimals: 0 
@@ -239,20 +276,21 @@ sensor:
       if (id(liters) < 2){
         return 0;
       }    
-      return (int)(1000*(id(liters)+id(phase)/6.0));  
+      return id(last_reported_liters__mili);
 
   - platform: template
     name: "liters"
     id: report_liters_rounded
+    force_update: false
     device_class: "water"
     unit_of_measurement: "L"
     accuracy_decimals: 0 
     state_class: total_increasing
     lambda: |-
-      if (id(liters) < 2){
+      if (id(last_reported_liters) < 2){
         return 0;
       }  
-      return id(liters);
+      return id(last_reported_liters);
 
   - platform: template
     id: phase_coarse
@@ -328,7 +366,6 @@ sensor:
         if ((x - 5) >= y && y < 2500) {
             return x;
         } else {
-
             return (int)((1 - alpha_cor) * (float)x + alpha_cor * (float)y);
         }
       };
@@ -354,6 +391,7 @@ sensor:
       
       short i = id(phase) > 2 ? id(phase) - 3 : id(phase);
       if (pn[i + 2] < pn[i + 1] && pn[i + 2] < pn[i]){
+          id(last_water_flow) = millis();
           if (pn[i + 1] > pn[i])
               id(phase)++;
           else
@@ -368,6 +406,15 @@ sensor:
 
 
 globals:
+  - id: last_reported_liters
+    type: int
+    initial_value: '0'
+  - id: last_reported_liters__mili
+    type: int
+    initial_value: '0'
+  - id: last_water_flow
+    type: uint32_t
+    initial_value: '0'
   - id: phase
     type: int
     initial_value: "0"
@@ -396,11 +443,11 @@ globals:
   - id: min_c
     type: int
   - id: upper_bound
-    initial_value: "1000"
+    initial_value: "1500"
     type: int
   - id: lower_bound
     type: int
-    initial_value: "10"
+    initial_value: "5"
 
 # Make sure logging is correct for solving platform IO bugs
 logger:
