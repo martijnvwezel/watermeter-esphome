@@ -9,12 +9,11 @@ Water meters are devices that measure how much water you use. They have a spinni
 
 ## Why
 The Muino Smart Water Meter is a **single-board** device that measures water consumption with **sub-100 millilitre** accuracy. The other big benefit is the **easy of installation**, for friends/family that wanted a similar solution this is easier to use.
-
 # Where to buy?
-* If you would like the watermeter go to: [webshop](https://www.tindie.com/products/muino/smart-water-meter-reader/)
-* You want a sensor to play with the DIY version go to: [webshop](https://www.tindie.com/products/muino/3-phase-muino-light-sensor-encoder/)
-* For big orders please make a request: [email](mail:martijnvwezel@muino.nl)
-* My webshop is located at [muino.nl](https://muino.nl). However, using Tindie for purchases results in marketing elements being displayed on my website. Consequently, I haven't dedicated time to enhancing the visual appeal of my site.
+* If you would like the watermeter go to: [tindie-webshop](https://www.tindie.com/products/muino/smart-water-meter-reader/) or better my [own-webshop](https://muino.nl/product/smart-water-meter-reader)
+* You want a sensor to play with the DIY version go to: [tindie-webshop](https://www.tindie.com/products/muino/3-phase-muino-light-sensor-encoder/) or better my [own-webshop](https://muino.nl/product/3d-case-for-the-water-meter-reader)
+* For big orders please make a request: [email](mailto:martijnvwezel@muino.nl)
+* My webshop is located at [muino.nl](https://muino.nl). I haven't dedicated time to enhancing the visual appeal of my site. However, I prefer nowadays my own website, because some people just buy it without knowing what they buy and using Tindie's protection scheme let me pay for all of the shipping costs. So in the end I am wrong and therefore I request a higher price from tindie webshop than from my own webshop, sorry I have to.
 
 ### Comfirmed supported devices
 * KiWa V200 (Designed for)
