@@ -13,3 +13,4 @@ jobs:
       files: muino-water-meter-esp32.yaml
       # CHANGEME: Set the name of your project here:
       name: Muino water meter
+      esphome_version: 2023.10.6
