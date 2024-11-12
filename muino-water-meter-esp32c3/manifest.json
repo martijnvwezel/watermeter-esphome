@@ -2,7 +2,7 @@
   "chipFamily": "ESP32-C3",
   "ota": {
     "path": "muino-water-meter-esp32c3/muino-water-meter-esp32c3.ota.bin",
-    "md5": "80b13fa14630b44f2a0a1e96c9707501"
+    "md5": "397819bad827834138f2a71121199966"
   },
   "parts": [
     {
