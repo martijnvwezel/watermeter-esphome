@@ -39,7 +39,7 @@ Thank you for buying the Muino Water Meter Reader :). Let me try to explain the 
    Screws are intented to fit securely/snuggly in the PCB but *do not* over thighten. Less compatible meters have no or wrong mounting holes, use tie-wraps, tape and creativity...
 3. Connect the USB-C power
 4. Go to your phone/wifi-device and connect to the Muino Smart Water Meter WiFi SSID (if you need a password: `12345678`)
-5. On the device connected to the Muino Smart Water Meter, go to http://192.168.4.1 and select your prefered WiFi SSID to connect the Muino Smart Water Meter with and enter the SSID passcode.
+5. Once the device connected to the Muino Smart Water Meter, go to http://192.168.4.1 and select your prefered WiFi SSID to connect the Muino Smart Water Meter with and enter the SSID passcode.
 6. The Muino Smart Water Meter will try to connect to the selected WiFi SSID, please be patient. After a while, check your home network to find the IP-address of the Espressif Muino Smart Water Meter.
 7. In Home Assistant, go to Settings, add the ESPHome integration, and add IP-address of the Muino Smart Water Meter to adopt it.
 8. In Home Assistant, go to Energy -> Energy Configuration (3 dot menu), add the new sensor (sensor.liters) and potentially the price per cubic meter of water.
