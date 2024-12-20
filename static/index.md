@@ -65,5 +65,4 @@ You can use the button below to install the pre-built firmware directly to your 
 # Installations
 
 ## Sensus 620
-
 <img src="/img/sensus_620.png.png" alt="muino watermeter" height="150" class="center"/>
