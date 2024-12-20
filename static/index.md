@@ -18,7 +18,7 @@ The Muino Smart Water Meter is a **single-board** device that measures water con
 * KiWa V200 (Designed for)
 * Honeywell v200 (Designed for)
 * KiWa R400 (Look to Sensus 620)
-* Sensus 620 (needs slight enlarging of two holes, and placement looks maybe less nice)
+* Sensus 620 (Note: Placement might appear less aesthetically pleasing because of the meters placement. The two middle holes of the Muino reader are aligned over the meter for proper attachment.)
 * Elster Honeywell (some)
 * Itron Actaris Schlumberger
 * You can always donate to let my create a watermeter compatibility..
@@ -60,3 +60,8 @@ You can use the button below to install the pre-built firmware directly to your 
 <esp-web-install-button manifest="./manifest.json"></esp-web-install-button>
 <script type="module" src="https://unpkg.com/esp-web-tools@9/dist/web/install-button.js?module"></script>
 
+# Installations
+
+## Sensus 620
+
+<img src="/img/sensus_620.png.png" alt="muino watermeter" height="150" class="center"/>

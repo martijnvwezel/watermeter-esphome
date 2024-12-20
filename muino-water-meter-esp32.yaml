@@ -23,21 +23,50 @@ esp32:
   framework:
     type: esp-idf
 
-# triggers reading adc values and iterating algoritm
+# Triggers reading adc values and iterating algoritm
 interval:
   - interval: 100ms
     then:
-      # - component.update: report_liters
-      # - component.update: report_liters_rounded
       - output.turn_on: sensor_power
-      - component.update: light_sensor_a_dark     
-      - lambda: |-     
-          if ((millis() - id(last_water_flow)) >= 60000) { // 300,000 ms = 5 minutes
-            // Update 'report_liters' and 'report_liters_rounded'
-            id(last_reported_liters__mili) = (int)(1000*(id(liters)+id(phase)/6.0)); 
-            id(last_reported_liters) = id(liters);
-            id(last_water_flow) = millis();
-          }
+      - component.update: light_sensor_a_dark
+      - if:
+          condition:
+            lambda: |-
+              return id(fastupdate).state; // If fastupdate is on, update immediately
+          then:
+            - lambda: |-
+                id(last_reported_liters__mili) = (int)(1000*(id(liters)+id(phase)/6.0)); 
+                id(last_reported_liters) = id(liters);
+                id(last_water_flow) = millis();
+            - if:
+                condition:
+                  lambda: |-
+                    return id(debugmodus).state;
+                then:            
+                  - text_sensor.template.publish:
+                      id: debug_json
+                      state: !lambda |-
+                        return "{\"liters\":" + to_string(id(liters)) +
+                              ",\"phase\":" + to_string(id(phase)) +
+                              ",\"last_reported_liters\":" + to_string(id(last_reported_liters)) +
+                              ",\"last_reported_liters__mili\":" + to_string(id(last_reported_liters__mili)) +
+                              ",\"max_a\":" + to_string(id(max_a)) +
+                              ",\"max_b\":" + to_string(id(max_b)) +
+                              ",\"max_c\":" + to_string(id(max_c)) +
+                              ",\"min_a\":" + to_string(id(min_a)) +
+                              ",\"min_b\":" + to_string(id(min_b)) +
+                              ",\"min_c\":" + to_string(id(min_c)) +
+                              ",\"upper_bound\":" + to_string(id(upper_bound)) +
+                              ",\"lower_bound\":" + to_string(id(lower_bound)) +
+                              "}";
+          else:
+            - lambda: |-
+                // If fastupdate is off, only update every 60 seconds
+                if ((millis() - id(last_water_flow)) >= 60000) {
+                  id(last_reported_liters__mili) = (int)(1000*(id(liters)+id(phase)/6.0)); 
+                  id(last_reported_liters) = id(liters);
+                  id(last_water_flow) = millis();
+                }
 
   # - interval: 10s # Check every 10 seconds to reduce load, adjust as needed
   #   then:
@@ -70,6 +99,22 @@ switch:
     id: fastupdate
     name: Speed mode
     icon: "mdi:emoticon-cool-outline"
+
+  - platform: template 
+    optimistic: true
+    id: debugmodus
+    name: Debug mode
+    icon: "mdi:bug"
+    turn_on_action:
+      - switch.turn_on: fastupdate
+    turn_off_action:
+      - switch.turn_off: fastupdate
+text_sensor:
+  - platform: template
+    name: "debug_JSON"
+    id: debug_json
+    # No automatic interval, we'll update manually
+    update_interval: never
 
 output:
   - platform: gpio
