@@ -17,11 +17,11 @@ The Muino Smart Water Meter is a **single-board** device that measures water con
 ### Comfirmed supported devices
 * KiWa V200 (Designed for)
 * Honeywell v200 (Designed for)
-* KiWa R400 (Look to Sensus 620)
-* Sensus 620 (needs slight enlarging of two holes, and placement looks maybe less nice)
+* KiWa R400 (Similar to Sensus 620)
+* Sensus 620 (Note: Placement might appear less aesthetically pleasing because of the meters placement. The two middle holes of the Muino reader are aligned over the meter for proper attachment.)
 * Elster Honeywell (some)
-* Itron Actaris Schlumberger
-* You can always donate to let my create a watermeter compatibility..
+* Itron Actaris Schlumberger (Aquadis+) with double-sided tape or tie-wraps.
+* You can always donate to let me create a watermeter compatibility..
 
 # First time user
 Thank you for buying the Muino Water Meter Reader :). So here I tried to explain the steps what to do for your installation!
@@ -49,6 +49,8 @@ Thank you for buying the Muino Water Meter Reader :). So here I tried to explain
 1. **After restart**: Upon restart, a zero value is sent to inform the home assistant that the sensor has been reset.
 2. **Calibration**: The sensor calibrates during the first 2 liters of water usage.
 3. **Sending Updates**: After calibration, the sensor sends updates to the home assistant system. It waits until it detects 2 liters of water usage and then pauses for 1 minute before sending the update. This prevents interruptions during activities like showering.
+4. **Speed modus**: For faster updating the live values from the watermeter, what is more noisy and fills the database of your home-assistant.
+5. **Debug modus**: The speed modus will be enabled and the debug json will be filled with values from the meter for debugging purpose only.
 
 #### Don't forget to Add Muino Water-Meter Reader, to your HA Energy-dashboard
 
@@ -60,3 +62,8 @@ You can use the button below to install the pre-built firmware directly to your 
 <esp-web-install-button manifest="./manifest.json"></esp-web-install-button>
 <script type="module" src="https://unpkg.com/esp-web-tools@9/dist/web/install-button.js?module"></script>
 
+# Installations
+
+## Sensus 620
+
+<img src="/img/sensus_620.png.png" alt="muino watermeter" height="150" class="center"/>
