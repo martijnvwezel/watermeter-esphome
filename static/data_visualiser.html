@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Plotly Visualizer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body>
+    <div class="container my-5">
+        <h1 class="text-center mb-4">CSV Plotly Visualizer</h1>
+        <p class="text-center mb-4">Upload your CSV file to visualize its data as line plots.</p>
+        <div class="d-flex justify-content-center mb-4">
+            <input type="file" id="fileInput" accept=".csv" class="form-control w-50" />
+        </div>
+        <div id="plotDiv" class="border rounded" style="width: 100%; height: 600px;"></div>
+    </div>
+
+    <script>
+        document.getElementById('fileInput').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const csvData = e.target.result;
+                    const rows = csvData.split("\n").map(row => {
+                        const parts = row.split(/,"\{/); // Split before JSON part
+                        if (parts.length === 2) {
+                            const jsonPart = parts[1].split(/}\",/); // Split after JSON part
+                            if (jsonPart.length === 2) {
+                                return [parts[0], `{"${jsonPart[0]}}`, ...jsonPart[1].split(",")];
+                            }
+                        }
+                        return row.split(","); // Fallback for rows without JSON
+                    });
+
+                    console.log("CSV Headers:", rows[0]);
+                    console.log("First 10 Rows:", rows.slice(1, 10));
+
+                    // Extract headers and filter valid data
+                    const headers = rows[0].map(header => header.trim());
+                    const stateIndex = headers.indexOf('state');
+
+                    if (stateIndex === -1) {
+                        alert("The CSV file must contain a 'state' column.");
+                        return;
+                    }
+
+                    const data = rows.slice(1).filter(row => {
+                        const validRow = row[stateIndex] && !['unknown', 'unavailable'].includes(row[stateIndex].trim().toLowerCase());
+                        
+                        if (!validRow) {
+                            console.warn(`Skipping invalid row: ${row}`);
+                        }
+                        return validRow;
+                    });
+
+                    if (data.length === 0) {
+                        console.error("No valid data rows found after filtering.");
+                        alert("No valid data found in the file. Check the console for details.");
+                        return;
+                    }
+
+                    const traces = [];
+
+                    data.forEach(row => {
+                        const timestamp = row[2];
+                        let stateData = {};
+
+                        try {
+                            const cleanedState = row[stateIndex].replace(/"""/g, '"').replace(/""/g, '"');
+                            console.log(cleanedState);
+                            
+                            stateData = JSON.parse(cleanedState);
+                        } catch (error) {
+                            return;
+                        }
+
+                        Object.keys(stateData).forEach(key => {
+                            let trace = traces.find(t => t.name === `state.${key}`);
+                            if (!trace) {
+                                trace = {
+                                    x: [],
+                                    y: [],
+                                    mode: 'lines',
+                                    name: `state.${key}`
+                                };
+                                traces.push(trace);
+                            }
+                            trace.x.push(timestamp);
+                            trace.y.push(stateData[key]);
+                        });
+                    });
+
+                    if (traces.length > 0) {
+                        Plotly.newPlot('plotDiv', traces, {
+                            title: 'Muino Watermeter Debug Visualization',
+                            xaxis: { title: 'Timestamp' },
+                            yaxis: { title: 'Values' }
+                        });
+                    } else {
+                        console.error("No valid JSON keys found in the state column.");
+                        alert("No valid JSON data found in the state column. Check the console for details.");
+                    }
+                };
+                reader.readAsText(file);
+            }
+        });
+    </script>
+</body>
+</html>
