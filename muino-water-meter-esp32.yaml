@@ -16,7 +16,7 @@ esphome:
   # configuration and updates.
   project:
     name: esphome.muino-water-meter
-    version: "3.0.3"
+    version: "3.0.4"
 
 esp32:
   board: seeed_xiao_esp32c3
@@ -50,6 +50,9 @@ interval:
                               ",\"phase\":" + to_string(id(phase)) +
                               ",\"last_reported_liters\":" + to_string(id(last_reported_liters)) +
                               ",\"last_reported_liters__mili\":" + to_string(id(last_reported_liters__mili)) +
+                              ",\"aa\":" + to_string(id(aa)) +
+                              ",\"bb\":" + to_string(id(bb)) +
+                              ",\"cc\":" + to_string(id(cc)) +
                               ",\"max_a\":" + to_string(id(max_a)) +
                               ",\"max_b\":" + to_string(id(max_b)) +
                               ",\"max_c\":" + to_string(id(max_c)) +
