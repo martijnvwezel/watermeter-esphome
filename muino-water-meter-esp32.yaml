@@ -1,3 +1,5 @@
+
+
 # These substitutions allow the end user to override certain values
 substitutions:
   name: "muino-water-meter"
@@ -9,6 +11,12 @@ esphome:
   name_add_mac_suffix: true
   platformio_options:
     board_build.flash_mode: "dio"
+
+  # This will allow for (future) project identification,
+  # configuration and updates.
+  project:
+    name: esphome-muino-water-meter
+    version: "3.0.4"
 
 esp32:
   board: seeed_xiao_esp32c3
@@ -585,7 +593,7 @@ api:
 ota:
   platform: esphome
 
-# # This should point to the public location of this yaml file.
+# This should point to the public location of this yaml file.
 # dashboard_import:
 #   package_import_url: github://martijnvwezel/watermeter-esphome/muino-water-meter-esp32.yaml@main
 
