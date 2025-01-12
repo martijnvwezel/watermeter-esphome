@@ -541,44 +541,43 @@ number:
     id: offset_a_number
     name: "Offset A (0-3300)"
     restore_value: true       # <--- important
+    optimistic: true
     initial_value: 0
     min_value: 0
     max_value: 3300
     step: 1
-    set_action:
-      - lambda: |-
-          id(manual_offset_a) = (int) x;  // Set the global
     on_value:
-      lambda: |-
-          return id(manual_offset_a);     // Return the global
+      then:
+        - lambda: |-
+            id(manual_offset_a) = (int) x;
+
   - platform: template
     id: offset_b_number
     name: "Offset B (0-3300)"
     restore_value: true       # <--- important
+    optimistic: true
     initial_value: 0
     min_value: 0
     max_value: 3300
     step: 1
-    set_action:
-      - lambda: |-
-          id(manual_offset_b) = (int) x;
     on_value:
-      lambda: |-
-          return id(manual_offset_b);     // Return the global
+      then:
+        - lambda: |-
+            id(manual_offset_b) = (int) x;
+ 
   - platform: template
     id: offset_c_number
     name: "Offset C (0-3300)"
     restore_value: true       # <--- important
+    optimistic: true
     initial_value: 0
     min_value: 0
     max_value: 3300
     step: 1
-    set_action:
-      - lambda: |-
-          id(manual_offset_c) = (int) x;
     on_value:
-      lambda: |-
-          return id(manual_offset_c);     // Return the global
+      then:
+        - lambda: |-
+            id(manual_offset_c) = (int) x;
 
 
 
@@ -601,7 +600,10 @@ dashboard_import:
 wifi:
   # Set up a wifi access point using the device name above
   ap:
-
+  manual_ip:
+    static_ip: 192.168.1.84
+    gateway: 192.168.1.1
+    subnet: 255.255.255.0
 # In combination with the `ap` this allows the user
 # to provision wifi credentials to the device.
 captive_portal:
