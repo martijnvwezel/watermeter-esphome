@@ -74,7 +74,6 @@ interval:
   # - interval: 10s # Check every 10 seconds to reduce load, adjust as needed
   #   then:
   #     - lambda: |-
-
   # - interval: 1s
   #   then:
   #     # - component.update: report_liters
@@ -112,6 +111,20 @@ switch:
       - switch.turn_on: fastupdate
     turn_off_action:
       - switch.turn_off: fastupdate
+  # for manual calibration or auto
+  - platform: template
+    id: calibration_mode
+    name: "Manual Calibration"
+    icon: "mdi:tune-vertical"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON # <--- important
+    turn_on_action:
+      - lambda: |-
+          id(manual_calibration) = true;
+    turn_off_action:
+      - lambda: |-
+          id(manual_calibration) = false;
+
 text_sensor:
   - platform: template
     name: "debug_JSON"
@@ -424,9 +437,18 @@ sensor:
       id(max_b)= max_average(id(max_b), b, alpha_cor);
       id(max_c)= max_average(id(max_c), c, alpha_cor);
 
-      a -= (id(min_a) + id(max_a)) >> 1;
-      b -= (id(min_b) + id(max_b)) >> 1;
-      c -= (id(min_c) + id(max_c)) >> 1;
+      if (id(manual_calibration)) {
+        // Manual offsets
+        a -= id(manual_offset_a);
+        b -= id(manual_offset_b);
+        c -= id(manual_offset_c);
+      } else {
+        // Auto-calibration offsets
+        a -= (id(min_a) + id(max_a)) >> 1;
+        b -= (id(min_b) + id(max_b)) >> 1;
+        c -= (id(min_c) + id(max_c)) >> 1;
+      }
+
       short    pn[5];
       if (id(phase) & 1)
           pn[0] = a + a - b - c, pn[1] = b + b - a - c,
@@ -496,6 +518,69 @@ globals:
   - id: lower_bound
     type: int
     initial_value: "5"
+
+  # Switch that toggles between auto-calibration and manual calibration
+  - id: manual_calibration
+    type: bool
+    restore_value: yes  # <--- important
+    initial_value: "false"
+
+  # Manual offsets for a, b, c
+  - id: manual_offset_a
+    type: int
+    initial_value: "0"
+  - id: manual_offset_b
+    type: int
+    initial_value: "0"
+  - id: manual_offset_c
+    type: int
+    initial_value: "0"
+
+number:
+  - platform: template
+    id: offset_a_number
+    name: "Offset A (0-3300)"
+    restore_value: true       # <--- important
+    initial_value: 0
+    min_value: 0
+    max_value: 3300
+    step: 1
+    set_action:
+      - lambda: |-
+          id(manual_offset_a) = (int) x;  // Set the global
+    on_value:
+      lambda: |-
+          return id(manual_offset_a);     // Return the global
+  - platform: template
+    id: offset_b_number
+    name: "Offset B (0-3300)"
+    restore_value: true       # <--- important
+    initial_value: 0
+    min_value: 0
+    max_value: 3300
+    step: 1
+    set_action:
+      - lambda: |-
+          id(manual_offset_b) = (int) x;
+    on_value:
+      lambda: |-
+          return id(manual_offset_b);     // Return the global
+  - platform: template
+    id: offset_c_number
+    name: "Offset C (0-3300)"
+    restore_value: true       # <--- important
+    initial_value: 0
+    min_value: 0
+    max_value: 3300
+    step: 1
+    set_action:
+      - lambda: |-
+          id(manual_offset_c) = (int) x;
+    on_value:
+      lambda: |-
+          return id(manual_offset_c);     // Return the global
+
+
 
 # Make sure logging is correct for solving platform IO bugs
 logger:
