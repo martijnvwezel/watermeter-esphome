@@ -1,5 +1,3 @@
-
-
 # These substitutions allow the end user to override certain values
 substitutions:
   name: "muino-water-meter"
@@ -11,12 +9,6 @@ esphome:
   name_add_mac_suffix: true
   platformio_options:
     board_build.flash_mode: "dio"
-
-  # This will allow for (future) project identification,
-  # configuration and updates.
-  project:
-    name: esphome.muino-water-meter
-    version: "3.0.4"
 
 esp32:
   board: seeed_xiao_esp32c3
