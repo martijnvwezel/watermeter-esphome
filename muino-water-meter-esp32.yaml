@@ -14,9 +14,9 @@ esphome:
 
   # This will allow for (future) project identification,
   # configuration and updates.
-  project:
-    name: esphome-muino-water-meter
-    version: "3.0.4"
+  # project:
+  #   name: esphome-muino-water-meter
+  #   version: "3.0.4"
 
 esp32:
   board: seeed_xiao_esp32c3
