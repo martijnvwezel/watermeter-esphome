@@ -54,7 +54,6 @@ Thank you for buying the Muino Water Meter Reader :). So here I tried to explain
 
 #### Don't forget to Add Muino Water-Meter Reader, to your HA Energy-dashboard
 
-
 # Update your watermeter with a clean binary
 
 You can use the button below to install the pre-built firmware directly to your device via USB from the browser.
@@ -63,8 +62,10 @@ You can use the button below to install the pre-built firmware directly to your 
 <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
 
 
+# Wiki - for unsupported meters or meters that are stubborn
+[WIKI](https://github.com/martijnvwezel/watermeter-esphome/wiki)
 
-# Installations
+# Installations instructions
 
 ## Sensus 620
 <img src="/img/sensus_620.png" alt="muino watermeter" height="150" class="center"/>
