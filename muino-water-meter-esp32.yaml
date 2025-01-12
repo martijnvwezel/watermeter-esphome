@@ -585,9 +585,9 @@ api:
 ota:
   platform: esphome
 
-# This should point to the public location of this yaml file.
-dashboard_import:
-  package_import_url: github://martijnvwezel/watermeter-esphome/muino-water-meter-esp32.yaml@main
+# # This should point to the public location of this yaml file.
+# dashboard_import:
+#   package_import_url: github://martijnvwezel/watermeter-esphome/muino-water-meter-esp32.yaml@main
 
 wifi:
   # Set up a wifi access point using the device name above
