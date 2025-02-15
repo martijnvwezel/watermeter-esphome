@@ -117,7 +117,7 @@ switch:
     name: "Manual Calibration"
     icon: "mdi:tune-vertical"
     optimistic: true
-    restore_mode: RESTORE_DEFAULT_ON # <--- important
+    restore_mode: RESTORE_DEFAULT_OFF # <--- important/ maybe made here mistake
     turn_on_action:
       - lambda: |-
           id(manual_calibration) = true;
