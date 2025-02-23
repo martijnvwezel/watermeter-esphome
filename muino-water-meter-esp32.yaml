@@ -376,24 +376,40 @@ sensor:
           - component.update: bs
           - component.update: cs
     lambda: |-
+      static bool first = true;
+
+      // Read the raw values from the sensors
       int a = id(light_sensor_a_light).state - id(light_sensor_a_dark).state;
       int b = id(light_sensor_b_light).state - id(light_sensor_b_dark).state;
       int c = id(light_sensor_c_light).state - id(light_sensor_c_dark).state;
-      static bool first = true;
 
-      id(aa) = a;
-      id(bb) = b;
-      id(cc) = c;
+      // Update history buffers
+      id(a_history)[id(history_index)] = a;
+      id(b_history)[id(history_index)] = b;
+      id(c_history)[id(history_index)] = c;
+
+      // Compute moving averages
+      id(smoothed_a) = (id(a_history)[0] + id(a_history)[1] + id(a_history)[2]) / 3;
+      id(smoothed_b) = (id(b_history)[0] + id(b_history)[1] + id(b_history)[2]) / 3;
+      id(smoothed_c) = (id(c_history)[0] + id(c_history)[1] + id(c_history)[2]) / 3;
+
+      // Move to the next history index
+      id(history_index) = (id(history_index) + 1) % 3;
+
+      // Use the smoothed values instead of raw values
+      id(aa) = id(smoothed_a);
+      id(bb) = id(smoothed_b);
+      id(cc) = id(smoothed_c);
       
       int max = id(upper_bound);
       int min = id(lower_bound);
 
       if (a < min || b < min || c < min ){
-        ESP_LOGW("light_level", "Too dark");
+        ESP_LOGW("light_level", "Too dark, ignoring this measurement");
         return 0;
       }
       if (a > max || b > max || c > max){
-        ESP_LOGW("light_level", "Too bright");
+        ESP_LOGW("light_level", "Too bright, ignoring this measurement");
         return 0;
       }
       if (first){
@@ -533,6 +549,30 @@ globals:
     type: int
     initial_value: "0"
   - id: manual_offset_c
+    type: int
+    initial_value: "0"
+
+    # Parameters for the moving average of size 3
+  - id: a_history
+    type: int[3]
+    initial_value: "{0, 0, 0}"
+  - id: b_history
+    type: int[3]
+    initial_value: "{0, 0, 0}"
+  - id: c_history
+    type: int[3]
+    initial_value: "{0, 0, 0}"
+  - id: history_index
+    type: int
+    initial_value: "0"
+
+  - id: smoothed_a
+    type: int
+    initial_value: "0"
+  - id: smoothed_b
+    type: int
+    initial_value: "0"
+  - id: smoothed_c
     type: int
     initial_value: "0"
 
