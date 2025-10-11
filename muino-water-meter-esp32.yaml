@@ -101,6 +101,13 @@ interval:
                   }
                   id(last_reported_liters) = id(liters);
                   id(last_water_flow) = millis();
+
+                  // Force update sensors so it gets new values
+                  id(current_consumption_sensor).publish_state(id(current_consumption));
+                  id(previous_consumption_sensor).publish_state(id(previous_consumption));
+                  id(flow_rate_current_sensor).publish_state(id(flow_rate_current));
+                  id(flow_rate_last_sensor).publish_state(id(flow_rate_last));
+
                 }
 
   # - interval: 10s # Check every 10 seconds to reduce load, adjust as needed
@@ -147,7 +154,7 @@ switch:
   - platform: template
     optimistic: true
     id: spindel_normal
-    name: "Spindel normal or 120 degrees"
+    name: "Spindel 180=on 120=off"
     icon: "mdi:rotate-3d-variant"
     restore_mode: RESTORE_DEFAULT_ON
 
