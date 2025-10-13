@@ -35,7 +35,21 @@ interval:
               return id(fastupdate).state; // If fastupdate is on, update immediately
           then:
             - lambda: |-
-                id(last_reported_liters__mili) = (int)(1000*(id(liters)+id(phase)/6.0)); 
+                if (id(spindel_normal).state) {
+                  // Normal meter: symmetric 180° pattern
+                  id(last_reported_liters__mili) = (int)(1000*(id(liters)+id(phase)/6.0));
+                } else {
+                  // 120° meter: asymmetric pattern - 120° white (2 phases), 240° dark (4 phases)
+                  float phase_fraction;
+                  if (id(phase) < 2) {
+                    // In white section (120°): phases 0-1 = 0.0 to 0.333 liters
+                    phase_fraction = id(phase) / 6.0;
+                  } else {
+                    // In dark section (240°): phases 2-5 = 0.333 to 1.0 liters
+                    phase_fraction = 0.333 + ((id(phase) - 2) * 0.667 / 4.0);
+                  }
+                  id(last_reported_liters__mili) = (int)(1000*(id(liters) + phase_fraction));
+                }
                 id(last_reported_liters) = id(liters);
                 id(last_water_flow) = millis();
             - if:
@@ -61,14 +75,39 @@ interval:
                               ",\"min_c\":" + to_string(id(min_c)) +
                               ",\"upper_bound\":" + to_string(id(upper_bound)) +
                               ",\"lower_bound\":" + to_string(id(lower_bound)) +
+                              ",\"flow_rate_current\":" + to_string(id(flow_rate_current)) +
+                              ",\"flow_rate_last\":" + to_string(id(flow_rate_last)) +
+                              ",\"current_consumption\":" + to_string(id(current_consumption)) +
+                              ",\"previous_consumption\":" + to_string(id(previous_consumption)) +
                               "}";
           else:
             - lambda: |-
                 // If fastupdate is off, only update every 60 seconds
                 if ((millis() - id(last_water_flow)) >= 60000) {
-                  id(last_reported_liters__mili) = (int)(1000*(id(liters)+id(phase)/6.0)); 
+                  if (id(spindel_normal).state) {
+                    // Normal meter: symmetric 180° pattern
+                    id(last_reported_liters__mili) = (int)(1000*(id(liters)+id(phase)/6.0));
+                  } else {
+                    // 120° meter: asymmetric pattern - 120° white (2 phases), 240° dark (4 phases)
+                    float phase_fraction;
+                    if (id(phase) < 2) {
+                      // In white section (120°): phases 0-1 = 0.0 to 0.333 liters
+                      phase_fraction = id(phase) / 6.0;
+                    } else {
+                      // In dark section (240°): phases 2-5 = 0.333 to 1.0 liters
+                      phase_fraction = 0.333 + ((id(phase) - 2) * 0.667 / 4.0);
+                    }
+                    id(last_reported_liters__mili) = (int)(1000*(id(liters) + phase_fraction));
+                  }
                   id(last_reported_liters) = id(liters);
                   id(last_water_flow) = millis();
+
+                  // Force update sensors so it gets new values
+                  id(current_consumption_sensor).publish_state(id(current_consumption));
+                  id(previous_consumption_sensor).publish_state(id(previous_consumption));
+                  id(flow_rate_current_sensor).publish_state(id(flow_rate_current));
+                  id(flow_rate_last_sensor).publish_state(id(flow_rate_last));
+
                 }
 
   # - interval: 10s # Check every 10 seconds to reduce load, adjust as needed
@@ -102,7 +141,7 @@ switch:
     name: Speed mode
     icon: "mdi:emoticon-cool-outline"
 
-  - platform: template 
+  - platform: template
     optimistic: true
     id: debugmodus
     name: Debug mode
@@ -111,6 +150,14 @@ switch:
       - switch.turn_on: fastupdate
     turn_off_action:
       - switch.turn_off: fastupdate
+
+  - platform: template
+    optimistic: true
+    id: spindel_normal
+    name: "Spindel 180=on 120=off"
+    icon: "mdi:rotate-3d-variant"
+    restore_mode: RESTORE_DEFAULT_ON
+
   # for manual calibration or auto
   - platform: template
     id: calibration_mode
@@ -353,6 +400,50 @@ sensor:
       }  
       return id(last_reported_liters);
 
+  # Flow rate sensors
+  - platform: template
+    name: "Flow Rate Current"
+    id: flow_rate_current_sensor
+    force_update: false
+    unit_of_measurement: "L/min"
+    accuracy_decimals: 2
+    state_class: measurement
+    lambda: |-
+      return id(flow_rate_current);
+
+  - platform: template
+    name: "Flow Rate Last"
+    id: flow_rate_last_sensor
+    force_update: false
+    unit_of_measurement: "L/min"
+    accuracy_decimals: 2
+    state_class: measurement
+    lambda: |-
+      return id(flow_rate_last);
+
+  # Consumption sensors
+  - platform: template
+    name: "Current Consumption"
+    id: current_consumption_sensor
+    force_update: false
+    device_class: "water"
+    unit_of_measurement: "L"
+    accuracy_decimals: 1
+    state_class: measurement
+    lambda: |-
+      return id(current_consumption);
+
+  - platform: template
+    name: "Previous Consumption"
+    id: previous_consumption_sensor
+    force_update: false
+    device_class: "water"
+    unit_of_measurement: "L"
+    accuracy_decimals: 1
+    state_class: measurement
+    lambda: |-
+      return id(previous_consumption);
+
   - platform: template
     id: phase_coarse
     device_class: "water"
@@ -375,6 +466,10 @@ sensor:
           - component.update: as
           - component.update: bs
           - component.update: cs
+          - component.update: flow_rate_current_sensor
+          - component.update: flow_rate_last_sensor
+          - component.update: current_consumption_sensor
+          - component.update: previous_consumption_sensor
     lambda: |-
       static bool first = true;
 
@@ -477,16 +572,75 @@ sensor:
       
       short i = id(phase) > 2 ? id(phase) - 3 : id(phase);
       if (pn[i + 2] < pn[i + 1] && pn[i + 2] < pn[i]){
-          id(last_water_flow) = millis();
+          uint32_t current_time = millis();
+          id(last_water_flow) = current_time;
+          
+          // Simple flow rate calculation based on time between phase changes
+          if (id(last_flow_time) > 0) {
+            uint32_t time_diff = current_time - id(last_flow_time);
+            if (time_diff > 0) {
+              // Flow rate based on phase changes (6 phases = 1 liter)
+              // Each phase = 1/6 liter, time_diff in ms
+              float liters_per_phase = 1.0 / 6.0;
+              float flow_rate = (liters_per_phase * 60000.0) / float(time_diff); // L/min
+              
+              // Smooth the flow rate with exponential moving average
+              if (id(flow_rate_current) == 0.0) {
+                id(flow_rate_current) = flow_rate;
+              } else {
+                id(flow_rate_current) = 0.7 * id(flow_rate_current) + 0.3 * flow_rate;
+              }
+            }
+          }
+          
+          id(last_flow_time) = current_time;
+          id(last_flow_liters) = id(liters);
+          
           if (pn[i + 1] > pn[i])
               id(phase)++;
           else
               id(phase)--;
       }
-      if (id(phase) == 6)
-          id(liters)++, id(phase) = 0;
-      else if (id(phase) == -1)
-          id(liters)--, id(phase) = 5;
+      
+      // Auto-reset consumption after 30 seconds of no flow
+      if ((millis() - id(last_water_flow)) >= 30000) {
+        if (id(current_consumption) > 0.0) { // Reset any consumption > 0
+          // Store current consumption as previous before resetting
+          id(previous_consumption) = id(current_consumption);
+          id(flow_rate_last) = id(flow_rate_current);
+          
+          // Reset for next consumption period
+          id(current_consumption) = 0.0;
+          id(consumption_start_time) = 0; // Reset to start fresh next time
+          id(consumption_start_liters) = 0;
+          
+          // Reset flow rate
+          id(flow_rate_current) = 0.0;
+        }
+      }
+      
+      if (id(phase) == 6) {
+          id(liters)++;
+          id(phase) = 0;
+          
+          // Auto-start consumption tracking on first flow
+          if (id(consumption_start_time) == 0) {
+            id(consumption_start_time) = millis();
+            id(consumption_start_liters) = id(liters) - 1;
+          }
+          id(current_consumption) = float(id(liters) - id(consumption_start_liters));
+      }
+      else if (id(phase) == -1) {
+          id(liters)--;
+          id(phase) = 5;
+          
+          // Handle reverse flow
+          if (id(consumption_start_time) == 0) {
+            id(consumption_start_time) = millis();
+            id(consumption_start_liters) = id(liters) + 1;
+          }
+          id(current_consumption) = float(id(liters) - id(consumption_start_liters));
+      }
           
       return id(liters);
 
@@ -507,6 +661,32 @@ globals:
   - id: liters
     type: int
     initial_value: "0"
+  # Flow rate tracking variables
+  - id: flow_rate_current
+    type: float
+    initial_value: "0.0"
+  - id: flow_rate_last
+    type: float
+    initial_value: "0.0"
+  - id: last_flow_time
+    type: uint32_t
+    initial_value: '0'
+  - id: last_flow_liters
+    type: int
+    initial_value: '0'
+  # Consumption tracking
+  - id: current_consumption
+    type: float
+    initial_value: "0.0"
+  - id: previous_consumption
+    type: float
+    initial_value: "0.0"
+  - id: consumption_start_time
+    type: uint32_t
+    initial_value: '0'
+  - id: consumption_start_liters
+    type: int
+    initial_value: '0'
   - id: aa
     type: int
     initial_value: "0"
