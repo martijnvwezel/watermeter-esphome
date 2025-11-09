@@ -15,7 +15,7 @@ jobs:
       #### Modify below here to match your project ####
       files: |
         muino-water-meter-esp32.factory.yaml
-      esphome-version: 2024.10.3
+      esphome-version: 2025.10.4
       combined-name: project-template
       #### Modify above here to match your project ####
 
