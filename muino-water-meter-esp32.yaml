@@ -163,8 +163,8 @@ switch:
     id: calibration_mode
     name: "Manual Calibration"
     icon: "mdi:tune-vertical"
-    optimistic: true
-    restore_mode: RESTORE_DEFAULT_OFF # <--- important/ maybe made here mistake
+    lambda: |-
+      return id(manual_calibration);
     turn_on_action:
       - lambda: |-
           id(manual_calibration) = true;
@@ -565,6 +565,13 @@ sensor:
         b -= (id(min_b) + id(max_b)) >> 1;
         c -= (id(min_c) + id(max_c)) >> 1;
       }
+      // log with manual calibration the offset and without first string manual_ofset* tehn the auto calibration one 
+      ESP_LOGI("calibration", "a_offset:%d b_offset:%d c_offset:%d | a_auto:%d b_auto:%d c_auto:%d",
+                id(manual_offset_a), id(manual_offset_b), id(manual_offset_c),
+                (id(min_a) + id(max_a)) >> 1,
+                (id(min_b) + id(max_b)) >> 1,
+                (id(min_c) + id(max_c)) >> 1);
+      
 
       short    pn[5];
       if (id(phase) & 1)
@@ -734,11 +741,11 @@ globals:
     initial_value: "0"
   - id: manual_offset_b
     type: int
-    restore_value: yes 
+    restore_value: yes
     initial_value: "0"
   - id: manual_offset_c
     type: int
-    restore_value: yes 
+    restore_value: yes
     initial_value: "0"
 
     # Parameters for the moving average of size 3
@@ -769,13 +776,11 @@ number:
   - platform: template
     id: offset_a_number
     name: "Offset A (0-3300)"
-    restore_value: true       # <--- important
-    optimistic: true
-    initial_value: 0
     min_value: 0
     max_value: 3300
     step: 1
-    on_value:
+    lambda: return id(manual_offset_a);
+    set_action:
       then:
         - lambda: |-
             id(manual_offset_a) = (int) x;
@@ -783,13 +788,11 @@ number:
   - platform: template
     id: offset_b_number
     name: "Offset B (0-3300)"
-    restore_value: true       # <--- important
-    optimistic: true
-    initial_value: 0
     min_value: 0
     max_value: 3300
     step: 1
-    on_value:
+    lambda: return id(manual_offset_b);
+    set_action:
       then:
         - lambda: |-
             id(manual_offset_b) = (int) x;
@@ -797,13 +800,11 @@ number:
   - platform: template
     id: offset_c_number
     name: "Offset C (0-3300)"
-    restore_value: true       # <--- important
-    optimistic: true
-    initial_value: 0
     min_value: 0
     max_value: 3300
     step: 1
-    on_value:
+    lambda: return id(manual_offset_c);
+    set_action:
       then:
         - lambda: |-
             id(manual_offset_c) = (int) x;
