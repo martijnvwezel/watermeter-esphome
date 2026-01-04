@@ -553,6 +553,12 @@ sensor:
         a -= id(manual_offset_a);
         b -= id(manual_offset_b);
         c -= id(manual_offset_c);
+        id(min_a)= id(manual_offset_a);
+        id(min_b)= id(manual_offset_b);
+        id(min_c)= id(manual_offset_c);
+        id(max_a)= id(manual_offset_a)+2;
+        id(max_b)= id(manual_offset_b)+2;
+        id(max_c)= id(manual_offset_c)+2;
       } else {
         // Auto-calibration offsets
         a -= (id(min_a) + id(max_a)) >> 1;
