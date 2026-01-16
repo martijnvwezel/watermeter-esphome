@@ -377,14 +377,14 @@ sensor:
     id: report_liters
     force_update: false
     device_class: "water"
-    unit_of_measurement: "mL"
-    accuracy_decimals: 0 
+    unit_of_measurement: "L"
+    accuracy_decimals: 3 
     state_class: total_increasing
     lambda: |-
       if (id(liters) < 2){
         return 0;
       }    
-      return id(last_reported_liters__mili);
+      return id(last_reported_liters__mili) / 1000.0;
 
   - platform: template
     name: "liters"
@@ -429,7 +429,6 @@ sensor:
     device_class: "water"
     unit_of_measurement: "L"
     accuracy_decimals: 1
-    state_class: measurement
     lambda: |-
       return id(current_consumption);
 
@@ -440,7 +439,6 @@ sensor:
     device_class: "water"
     unit_of_measurement: "L"
     accuracy_decimals: 1
-    state_class: measurement
     lambda: |-
       return id(previous_consumption);
 
