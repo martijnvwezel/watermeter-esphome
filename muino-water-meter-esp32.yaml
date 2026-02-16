@@ -212,20 +212,28 @@ sensor:
     update_interval: never
     lambda: return id(consumption_previous);
 
+  - platform: template
+    name: "Lifetime Consumption"
+    id: consumption_lifetime_sensor
+    device_class: "water"
+    unit_of_measurement: "L"
+    accuracy_decimals: 2
+    update_interval: never
+    lambda: return id(consumption_lifetime);
+
 number:
   - platform: template
-    id: consumption_lifetime_sensor
+    id: consumption_lifetime_number
     name: "Lifetime Consumption"
     device_class: "water"
     unit_of_measurement: "L"
     update_interval: never
     restore_value: true
-    set_action:
-      - lambda: |-
-          id(consumption_lifetime) = x;
     min_value: 0
     max_value: 1000000000
     step: 0.01
+    set_action:
+      - lambda: id(consumption_lifetime) = x;
 
   - &num_common
     platform: template
@@ -505,6 +513,7 @@ interval:
           then:
             - lambda: |-
                 // Force update sensors so it gets new values
+                id(consumption_lifetime_number).publish_state(id(consumption_lifetime));
                 id(consumption_lifetime_sensor).publish_state(id(consumption_lifetime));
                 id(consumption_since_restart_sensor).publish_state(id(consumption_since_restart));
                 id(consumption_current_sensor).publish_state(id(consumption_current));
