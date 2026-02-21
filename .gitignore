@@ -7,3 +7,5 @@ test*
 pushmsg
 imgui.ini
 *.log
+
+/algorithm/*

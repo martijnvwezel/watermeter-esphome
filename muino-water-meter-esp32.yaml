@@ -9,6 +9,12 @@ substitutions:
   reset_current_time: 30000
   # If flow drops to less than this fraction of the current flow rate, reset consumption.
   reset_fraction: 0.1
+  # Interval between sensor readings
+  sample_interval: 100ms
+  # Number of samples to take for each reading
+  samples_per_reading: 10
+  # Total window size (should >= samples_per_reading)
+  total_window_size: 30
 
 esphome:
   name: "${name}"
@@ -115,7 +121,7 @@ sensor:
   - &adc_common
     platform: adc
     update_interval: never
-    samples: 3
+    samples: 1
     entity_category: "diagnostic"
     internal: true
     pin:
@@ -124,6 +130,11 @@ sensor:
       ignore_strapping_warning: true
     id: light_sensor_a_dark
     name: "Light Sensor A Dark"
+    filters:
+      - sliding_window_moving_average:
+          window_size: ${total_window_size}
+          send_every: ${samples_per_reading}
+          send_first_at: ${samples_per_reading}
 
   - <<: *adc_common
     pin:
@@ -162,6 +173,16 @@ sensor:
     name: "Light Sensor C Light"
 
   # liters
+  - platform: template
+    name: "Lifetime Consumption"
+    id: consumption_lifetime_sensor
+    device_class: "water"
+    unit_of_measurement: "L"
+    accuracy_decimals: 2
+    update_interval: never
+    state_class: total_increasing
+    lambda: return id(consumption_lifetime);
+
   - platform: template
     name: "Consumption since restart"
     id: consumption_since_restart_sensor
@@ -211,15 +232,6 @@ sensor:
     accuracy_decimals: 2
     update_interval: never
     lambda: return id(consumption_previous);
-
-  - platform: template
-    name: "Lifetime Consumption"
-    id: consumption_lifetime_sensor
-    device_class: "water"
-    unit_of_measurement: "L"
-    accuracy_decimals: 2
-    update_interval: never
-    lambda: return id(consumption_lifetime);
 
 number:
   - platform: template
@@ -286,11 +298,11 @@ number:
 globals:
   # Consumption tracking variables
   - id: consumption_lifetime
-    type: float
+    type: double
     initial_value: "0"
     restore_value: true
   - id: consumption_since_restart
-    type: float
+    type: double
     initial_value: "0"
   - id: consumption_current
     type: float
@@ -328,21 +340,27 @@ script:
     then:
       - output.turn_on: sensor_power
       - delay: 20ms
-      - component.update: light_sensor_a_dark
-      - component.update: light_sensor_b_dark
-      - component.update: light_sensor_c_dark
+      - repeat:
+          count: ${samples_per_reading}
+          then:
+            - component.update: light_sensor_a_dark
+            - component.update: light_sensor_b_dark
+            - component.update: light_sensor_c_dark
       - output.turn_on: led
       - delay: 20ms
-      - component.update: light_sensor_a_light
-      - component.update: light_sensor_b_light
-      - component.update: light_sensor_c_light
+      - repeat:
+          count: ${samples_per_reading}
+          then:
+            - component.update: light_sensor_a_light
+            - component.update: light_sensor_b_light
+            - component.update: light_sensor_c_light
       - output.turn_off: led
       - output.turn_off: sensor_power
       - lambda: |-
           auto min_average = [](float _min, float _max, float y, float alpha_cor) -> float {
             if (_min == 0) 
                 return y;
-            else if (y < _min + 0.20 * (_max - _min))
+            else if (y < _min + 0.10 * (_max - _min))
               return (1.0f - alpha_cor) * _min + alpha_cor * y;
             else 
               return _min;
@@ -351,54 +369,21 @@ script:
           auto max_average = [](float _min, float _max, float y, float alpha_cor) -> float {
             if (_max == 0) 
                 return y;
-            else if (y > _max - 0.20 * (_max - _min)) 
+            else if (y > _max - 0.10 * (_max - _min)) 
                 return (1.0f - alpha_cor) * _max + alpha_cor * y;
             else 
                 return _max;
           };
 
-          // Return median of three integers in array arr[0..2]
-          auto median = [](auto arr[3], auto val) -> auto {
-
-            // push value into the 3-slot history and return the median (or 0 if any slot == 0)
-            arr[0] = arr[1];
-            arr[1] = arr[2];
-            arr[2] = val;
-
-            if (arr[0] == 0)
-              return arr[0];
-
-            if ((arr[0] <= arr[1] && arr[1] <= arr[2]) || (arr[2] <= arr[1] && arr[1] <= arr[0])) return arr[1];
-            if ((arr[1] <= arr[0] && arr[0] <= arr[2]) || (arr[2] <= arr[0] && arr[0] <= arr[1])) return arr[0];
-            return arr[2];
-          };
-
-
-          static float a_light_history[3] = {};
-          static float b_light_history[3] = {};
-          static float c_light_history[3] = {};
-          static float a_dark_history[3] = {};
-          static float b_dark_history[3] = {};
-          static float c_dark_history[3] = {};
-
           ESP_LOGD("org", "al:%f bl:%f cl:%f ad:%f bd:%f cd:%f", 
             id(light_sensor_a_light).state, id(light_sensor_b_light).state, id(light_sensor_c_light).state, 
             id(light_sensor_a_dark).state, id(light_sensor_b_dark).state, id(light_sensor_c_dark).state);
 
-          // Compute medians
-          float al = median(a_light_history, id(light_sensor_a_light).state);
-          float bl = median(b_light_history, id(light_sensor_b_light).state);
-          float cl = median(c_light_history, id(light_sensor_c_light).state);
+          float a = id(light_sensor_a_light).state - id(light_sensor_a_dark).state;
+          float b = id(light_sensor_b_light).state - id(light_sensor_b_dark).state;
+          float c = id(light_sensor_c_light).state - id(light_sensor_c_dark).state;
 
-          float ad = median(a_dark_history, id(light_sensor_a_dark).state);
-          float bd = median(b_dark_history, id(light_sensor_b_dark).state);
-          float cd = median(c_dark_history, id(light_sensor_c_dark).state);
-
-          float a = al - ad;
-          float b = bl - bd;
-          float c = cl - cd;
-
-          ESP_LOGD("sensor", "al:%f bl:%f cl:%f ad:%f bd:%f cd:%f a:%f b:%f c:%f", al, bl, cl, ad, bd, cd, a, b, c); 
+          ESP_LOGD("sensor", "al:%f bl:%f cl:%f ad:%f bd:%f cd:%f a:%f b:%f c:%f", id(light_sensor_a_light).state, id(light_sensor_b_light).state, id(light_sensor_c_light).state, id(light_sensor_a_dark).state, id(light_sensor_b_dark).state, id(light_sensor_c_dark).state, a, b, c); 
 
           if (a==0 || b==0 || c==0) {
             // Initializing, ignore
@@ -413,8 +398,11 @@ script:
             return;
           }
 
-          if (id(manual_calibration).state==false) {
-            float alpha_cor = (id(consumption_since_restart) < 2) ? 0.1f : 0.01f;
+          if (id(manual_calibration).state==false && id(consumption_since_restart) <= 2.0f) {
+            // correction factor for min/max averaging, adjust as needed
+            // 0.1 is reasonable during calibration, if continuous adjustment is needed, 
+            // suggest using 0.001 after calibration
+            float alpha_cor = 0.1f; 
 
             id(min_a).state = min_average(id(min_a).state, id(max_a).state, a, alpha_cor);
             id(min_b).state = min_average(id(min_b).state, id(max_b).state, b, alpha_cor);
@@ -427,7 +415,7 @@ script:
                       id(min_a).state, id(min_b).state, id(min_c).state,
                       id(max_a).state, id(max_b).state, id(max_c).state);
 
-            if (id(max_a).state - id(min_a).state < 0.005f || id(max_b).state - id(min_b).state < 0.005f || id(max_c).state - id(min_c).state < 0.005f) {
+            if (id(max_a).state - id(min_a).state < 0.02f || id(max_b).state - id(min_b).state < 0.02f || id(max_c).state - id(min_c).state < 0.02f) {
               if (id(consumption_since_restart) >= 2) {
                 ESP_LOGW("light_level", "Difference between max and min levels too small for reliable measurement.");
               }
@@ -442,17 +430,71 @@ script:
 
           ESP_LOGD("scaled", "a:%f b:%f c:%f", a, b, c);
 
+          const float H = 0.2f;  // hysteresis margin (3% of full scale)
+
+          // Hysteresis comparisons
+          bool a_gt_b = (a > b + H);
+          bool b_gt_a = (b > a + H);
+
+          bool b_gt_c = (b > c + H);
+          bool c_gt_b = (c > b + H);
+
+          bool c_gt_a = (c > a + H);
+          bool a_gt_c = (a > c + H);
+
+
+          int s = id(phase);  // default: keep previous phase
+
+          if (a_gt_b && b_gt_c) s = 0;
+          else if (a_gt_c && c_gt_b) s = 1;
+          else if (c_gt_a && a_gt_b) s = 2;
+          else if (c_gt_b && b_gt_a) s = 3;
+          else if (b_gt_c && c_gt_a) s = 4;
+          else if (b_gt_a && a_gt_c) s = 5;
+          else s=-1;
+
+
+          const float HYS = 0.5f;  // hysteresis band around 0, tune this
+
+          static bool ah = false, bh = false, ch = false;
+
+          // A
+          if (!ah && a >  HYS)      ah = true;
+          else if (ah && a < -HYS)  ah = false;
+
+          // B
+          if (!bh && b >  HYS)      bh = true;
+          else if (bh && b < -HYS)  bh = false;
+
+          // C
+          if (!ch && c >  HYS)      ch = true;
+          else if (ch && c < -HYS)  ch = false;
+
+          uint8_t pattern = (ah ? 1 : 0) | (bh ? 2 : 0) | (ch ? 4 : 0);
+
+          int new_phase = id(phase);  // default: keep old
+
+          switch (pattern) {
+            case 0b100: new_phase = 0; break;
+            case 0b110: new_phase = 1; break;
+            case 0b010: new_phase = 2; break;
+            case 0b011: new_phase = 3; break;
+            case 0b001: new_phase = 4; break;
+            case 0b101: new_phase = 5; break;
+            // anything else: invalid/transient → ignore
+            default: new_phase = -1; break;
+          }
 
           float pn[3] = {2*a - b - c, 2*b - a - c, 2*c - a - b};
           if ((id(phase) & 1) == 0)
             for (int k = 0; k < 3; ++k) pn[k] = -pn[k];
           int idx = (id(phase) + 2) % 3;  // candidate phase
 
-          ESP_LOGD("phase", "prev_phase:%i cand_phase:%i pn:%f %f %f", id(phase), idx, pn[0], pn[1], pn[2]);
+          ESP_LOGD("phase", "prev_phase:%i cand_phase:%i alt_phase:%i est_phase:%i pn:%f %f %f", id(phase), idx, s, new_phase, pn[0], pn[1], pn[2]);
 
           uint32_t current_time = millis();
-          float flow_rate = 0.0;  
-          float liters_for_phase = 1.0 / 6.0;
+          float flow_rate = 0.0f;  
+          float liters_for_phase = 1.0f / 6.0f;
           
           // TODO: consider calibrating relative duration of the phases based on typical flow patterns, 
           // e.g. if phase 0 is typically shorter than others, it might indicate a faster flow and 
@@ -463,17 +505,17 @@ script:
             flow_rate = (liters_for_phase * 60000.0) / float(current_time - id(last_flow_time));
           }
 
-          if (pn[idx] < pn[(idx + 1) % 3] && pn[idx] < pn[(idx + 2) % 3]) {
+          if (pn[idx]+0.1 < pn[(idx + 1) % 3] && pn[idx]+0.1 < pn[(idx + 2) % 3] ) {
               id(phase)=(id(phase)+1)%6;
 
               id(consumption_lifetime) += liters_for_phase;
               id(consumption_since_restart) += liters_for_phase;
               id(consumption_current) += liters_for_phase;
               
-              if (id(flow_rate_current) == 0.0) {
+              if (id(flow_rate_current) == 0.0f) {
                 id(flow_rate_current) = flow_rate;
               } else {
-                id(flow_rate_current) = 0.7 * id(flow_rate_current) + 0.3 * flow_rate;
+                id(flow_rate_current) = 0.7f * id(flow_rate_current) + 0.3f * flow_rate;
               }
               
               id(last_flow_time) = current_time;
@@ -484,13 +526,13 @@ script:
             if ( millis() - id(last_flow_time) >= ${reset_current_time} ||
                   flow_rate < id(flow_rate_current) * ${reset_fraction} )
             {
-              if (id(consumption_current) != 0.0) {
+              if (id(consumption_current) != 0.0f) {
                 id(consumption_previous) = id(consumption_current);
                 id(flow_rate_previous) = id(flow_rate_current);
               }
               
-              id(consumption_current) = 0.0;
-              id(flow_rate_current) = 0.0;
+              id(consumption_current) = 0.0f;
+              id(flow_rate_current) = 0.0f;
             }
           }
           
@@ -502,7 +544,7 @@ script:
 # Publish sensor states at the configured update interval or immediately if fastupdate is enabled.
 # Also publishes a debug JSON with all relevant values when debug mode is enabled.
 interval:
-  - interval: 100ms
+  - interval: ${sample_interval}
     then:
       - script.execute: update_readings
       - if:
