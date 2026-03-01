@@ -110,20 +110,25 @@ button:
           id(consumption_current) = 0;
           id(flow_rate_current) = 0;
           id(calibration_state) = 0;
-
-          id(min_a).state = 0;
-          id(min_b).state = 0;
-          id(min_c).state = 0;
-          id(max_a).state = 0;
-          id(max_b).state = 0;
-          id(max_c).state = 0;
           
-          id(fraction_0).state = 1.0f;
-          id(fraction_1).state = 1.0f;
-          id(fraction_2).state = 1.0f;
-          id(fraction_3).state = 1.0f;
-          id(fraction_4).state = 1.0f;
-          id(fraction_5).state = 1.0f;
+          id(flow_rate_now_sensor).update();
+          id(flow_rate_current_sensor).update();
+          id(consumption_current_sensor).update();
+          id(calibration_state_sensor).update();
+
+          id(min_a).publish_state(0);
+          id(min_b).publish_state(0);
+          id(min_c).publish_state(0);
+          id(max_a).publish_state(0);
+          id(max_b).publish_state(0);
+          id(max_c).publish_state(0);
+          
+          id(fraction_0).publish_state(1.0f);
+          id(fraction_1).publish_state(1.0f);
+          id(fraction_2).publish_state(1.0f);
+          id(fraction_3).publish_state(1.0f);
+          id(fraction_4).publish_state(1.0f);
+          id(fraction_5).publish_state(1.0f);
 
 text_sensor:
   - platform: template
