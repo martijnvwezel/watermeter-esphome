@@ -1,6 +1,7 @@
 # TODO: remove publish interval: frequency of publications of flow etc is not too high
 # TODO: reuse current calibration values after reboot
 # TODO: make manual calibration possible again
+# TODO: add extra calibration state, when first round of fractions has been calculated versus at least 5?
 # TODO: update documentation
 
 
@@ -14,10 +15,10 @@ substitutions:
   lower_bound: 0.001
   # Minimum required range between min and max for calibration to be accepted
   min_range: 0.02
-  # If flow drops to less than this fraction of the current flow rate, reset consumption.
-  reset_fraction: 0.25
+  # If flow drops to less than this fraction, assume flow has ended (or a new flow level has started).
+  reset_fraction: 0.5
   # Maximum reset duration in milliseconds
-  max_reset_duration: 300000
+  max_reset_duration: 120000
 
   # Interval between sensor readings
   sample_interval: 100ms
@@ -510,12 +511,12 @@ script:
 
             ESP_LOGD("log2csv", "a_min:%f b_min:%f c_min:%f a_max:%f b_max:%f c_max:%f", id(min_a).state, id(min_b).state, id(min_c).state, id(max_a).state, id(max_b).state, id(max_c).state);
 
-            id(min_a).state = min_average(id(min_a).state, id(max_a).state, a, alpha_cor);
-            id(min_b).state = min_average(id(min_b).state, id(max_b).state, b, alpha_cor);
-            id(min_c).state = min_average(id(min_c).state, id(max_c).state, c, alpha_cor);
-            id(max_a).state = max_average(id(min_a).state, id(max_a).state, a, alpha_cor);
-            id(max_b).state = max_average(id(min_b).state, id(max_b).state, b, alpha_cor);
-            id(max_c).state = max_average(id(min_c).state, id(max_c).state, c, alpha_cor);
+            id(min_a).publish_state(min_average(id(min_a).state, id(max_a).state, a, alpha_cor));
+            id(min_b).publish_state(min_average(id(min_b).state, id(max_b).state, b, alpha_cor));
+            id(min_c).publish_state(min_average(id(min_c).state, id(max_c).state, c, alpha_cor));
+            id(max_a).publish_state(max_average(id(min_a).state, id(max_a).state, a, alpha_cor));
+            id(max_b).publish_state(max_average(id(min_b).state, id(max_b).state, b, alpha_cor));
+            id(max_c).publish_state(max_average(id(min_c).state, id(max_c).state, c, alpha_cor));
 
             ESP_LOGD("log2csv", "a_min:%f b_min:%f c_min:%f a_max:%f b_max:%f c_max:%f", id(min_a).state, id(min_b).state, id(min_c).state, id(max_a).state, id(max_b).state, id(max_c).state);
 
@@ -685,7 +686,8 @@ script:
                 ESP_LOGI("updating_fraction", "Updating fraction for phase %d based on duration %d and prev_duration %d", edge_phase, cdur, pdur);
                 float new_fraction = float(ci.millis - pi.millis) / cdur;
                 
-                get_fraction(edge_phase)->state = get_fraction(edge_phase)->state == 1.0f ? new_fraction : (0.8f * get_fraction(edge_phase)->state + 0.2f * new_fraction);
+                get_fraction(edge_phase)->publish_state(get_fraction(edge_phase)->state == 1.0f ? new_fraction : (0.8f * get_fraction(edge_phase)->state + 0.2f * new_fraction));
+                
                 ESP_LOGD("log2csv", "new_fraction:%f cdur:%d pdur:%d prev_cdur:%d", new_fraction, cdur, pdur, prev_cdur);
               }
 
@@ -755,24 +757,6 @@ script:
             ESP_LOGD("log2csv", "liters_since_phase0:%f liters_for_phase:%f flow_rate:%f flow_rate_now_calc:%f now:%d fraction:%f", liters_since_phase0, liters_for_phase, flow_rate, id(flow_rate_now), now, fraction);
           }
 
-
-          // reset phase timings, to prevent update of fractions after pause
-          /*        
-          bool times_calibrated = true;
-          for (int i = 0; i < 6; ++i) {
-            times_calibrated = times_calibrated && phase_info[i].prev_millis > 0;
-          }
-
-          if (times_calibrated && now - last_phase_change > expected_phase_duration * 1.2f ) {
-            for (int i = 0; i < 6; ++i) {
-              phase_info[i].millis = 0;
-              phase_info[i].prev_millis = 0;
-            }
-            ESP_LOGD("log2csv", "phase_reset:1");
-          }
-          */
-          
-          
           // If duration is more then the expected phase duration, then the flow has reduced.
           if ( id(flow_rate_current) > 0.0f && now - last_phase_change > expected_phase_duration * 1.1f )
           {
@@ -784,7 +768,7 @@ script:
             ESP_LOGD("log2csv", "duration_exceeded:1 expected_phase_duration:%d last_phase_change:%d now:%d flow_rate_adjusted:%f flow_rate_now_adjusted:%f", expected_phase_duration, last_phase_change, now, flow_rate,  id(flow_rate_now));
           }
 
-          // If the flow_rate is below the minimum_flow_rate or duration is more than the expected phase duration multiplied by the reset fraction then assume the flow has stopped.
+          // If the duration is more than the expected phase duration multiplied by the reset fraction then assume the flow has stopped.
           if ( (id(flow_rate_now)>0.0f || id(consumption_current) > 0.0f || id(flow_rate_current) > 0.0f) && (now - last_phase_change) * ${reset_fraction} > std::min(expected_phase_duration,(uint32_t)${max_reset_duration}) )
           {
             if (id(consumption_current) != 0.0f) {
