@@ -2,6 +2,7 @@
 # TODO: reuse current calibration values after reboot
 # TODO: make manual calibration possible again
 # TODO: add extra calibration state, when first round of fractions has been calculated versus at least 5?
+# TODO: float_rate_current higher then flow_rate_now, due to inital extra: orrect use either 2nd phase change after start, or use average of flow_rate_now?
 # TODO: update documentation
 
 
@@ -10,15 +11,6 @@ substitutions:
   name: "muino-water-meter"
   friendly_name: "Muino Water Meter"
   name_add_mac_suffix: true
-  # These bounds are used to filter out unrealistic readings, adjust as needed based on your sensor
-  upper_bound: 3.3
-  lower_bound: 0.001
-  # Minimum required range between min and max for calibration to be accepted
-  min_range: 0.02
-  # If flow drops to less than this fraction, assume flow has ended (or a new flow level has started).
-  reset_fraction: 0.5
-  # Maximum reset duration in milliseconds
-  max_reset_duration: 120000
 
   # Interval between sensor readings
   sample_interval: 100ms
@@ -28,6 +20,18 @@ substitutions:
   samples_per_reading: 10
   # Window size for the moving averaging over the readings
   window_size: 3
+
+  # These bounds are used to filter out unrealistic readings, adjust as needed based on your sensor
+  lower_bound: 0.001
+  upper_bound: 3.3
+  # Minimum required range between min and max for calibration to be accepted
+  min_range: 0.02
+  
+  # If flow drops to less than this fraction, assume flow has ended (or a new flow level has started).
+  reset_fraction: 0.5
+  # Maximum reset duration in milliseconds
+  max_reset_duration: 120000
+
   # Amount of liters corresponding to the min/max calibration phase
   calibration_liters: 2.0
   # Liters per full rotation
@@ -349,8 +353,8 @@ number:
     id: fraction_0
     name: "Liters for Phase 0"
     min_value: 0.0
-    max_value: 1.0
-    initial_value: 1.0
+    max_value: ${liters_per_rotation}
+    initial_value: ${liters_per_rotation}
     entity_category: "config"
     device_class: "water"
     unit_of_measurement: "L"
@@ -689,16 +693,16 @@ script:
 
               if (ci.prev_prev_millis > 0 && pi.prev_millis > 0 && cdur >= pdur * 0.9f && cdur <= pdur * 1.1f && cdur >= prev_cdur * 0.9f && cdur <= prev_cdur * 1.1f) {
                 ESP_LOGI("updating_fraction", "Updating fraction for phase %d based on duration %d and prev_duration %d", edge_phase, cdur, pdur);
-                float new_fraction = float(ci.millis - pi.millis) / cdur;
+                float new_fraction = ${liters_per_rotation} * float(ci.millis - pi.millis) / cdur;
                 
-                get_fraction(edge_phase)->publish_state(get_fraction(edge_phase)->state == 1.0f ? new_fraction : (0.8f * get_fraction(edge_phase)->state + 0.2f * new_fraction));
+                get_fraction(edge_phase)->publish_state(get_fraction(edge_phase)->state >= ${liters_per_rotation} ? new_fraction : (0.8f * get_fraction(edge_phase)->state + 0.2f * new_fraction));
                 
                 ESP_LOGD("log2csv", "new_fraction:%f cdur:%d pdur:%d prev_cdur:%d", new_fraction, cdur, pdur, prev_cdur);
               }
 
               bool fractions_calibrated = true;
               for (int i = 0; i < 6; ++i) {
-                fractions_calibrated = fractions_calibrated && get_fraction(i)->state < 1.0f;
+                fractions_calibrated = fractions_calibrated && get_fraction(i)->state < ${liters_per_rotation};
               }
 
               if (fractions_calibrated) {
@@ -718,8 +722,8 @@ script:
             }
             
             id(phase) = edge_phase;
-            float fraction = get_fraction(edge_phase)->state == 1.0f ? 1.0f/6.0f : get_fraction(edge_phase)->state;
-            float liters_for_phase = fraction * ${liters_per_rotation};
+            float fraction = get_fraction(edge_phase)->state >= ${liters_per_rotation} ? ${liters_per_rotation}/6.0f : get_fraction(edge_phase)->state;
+            float liters_for_phase = fraction;
             
             static float liters_since_phase0 = 0.0f;
             if (edge_phase == 5) {
@@ -751,7 +755,7 @@ script:
             }
             
             if ( fraction > 0.0f ) {
-              float next_fraction = get_fraction((edge_phase + 1) %6)->state == 1.0f ? 1.0f/6.0f : get_fraction((edge_phase + 1) %6)->state;
+              float next_fraction = get_fraction((edge_phase + 1) %6)->state >= ${liters_per_rotation} ? ${liters_per_rotation}/6.0f : get_fraction((edge_phase + 1) %6)->state;
               expected_phase_duration = (now - last_phase_change) / fraction * next_fraction;
             } else {
               expected_phase_duration = now - last_phase_change;
@@ -765,8 +769,8 @@ script:
           // If duration is more then the expected phase duration, then the flow has reduced.
           if ( id(flow_rate_current) > 0.0f && now - last_phase_change > expected_phase_duration * 1.1f )
           {
-            float fraction = get_fraction((edge_phase + 1) %6)->state == 1.0f ? 1.0f/6.0f : get_fraction((edge_phase + 1) %6)->state;
-            float liters_for_phase = fraction * ${liters_per_rotation};
+            float fraction = get_fraction((edge_phase + 1) %6)->state >= ${liters_per_rotation} ? ${liters_per_rotation}/6.0f : get_fraction((edge_phase + 1) %6)->state;
+            float liters_for_phase = fraction;
             float flow_rate = liters_for_phase / (now - last_phase_change) * 60000.0f; // L/min
             id(flow_rate_now) = id(flow_rate_now) < 0.1f ? flow_rate : (0.7f * id(flow_rate_now) + 0.3f * flow_rate);         
 
