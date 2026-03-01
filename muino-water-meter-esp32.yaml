@@ -1,28 +1,41 @@
+# TODO: remove publish interval: frequency of publications of flow etc is not too high
+# TODO: reuse current calibration values after reboot
+# TODO: make manual calibration possible again
+# TODO: update documentation
+
+
 # These substitutions allow the end user to override certain values
 substitutions:
   name: "muino-water-meter"
   friendly_name: "Muino Water Meter"
+  name_add_mac_suffix: true
   # These bounds are used to filter out unrealistic readings, adjust as needed based on your sensor
   upper_bound: 3.3
   lower_bound: 0.001
-  # Time in milliseconds to reset current consumption and flow rate if no flow is detected. Adjust as needed based on typical flow patterns.
-  reset_current_time: 30000
+  # Minimum required range between min and max for calibration to be accepted
+  min_range: 0.02
   # If flow drops to less than this fraction of the current flow rate, reset consumption.
-  reset_fraction: 0.1
+  reset_fraction: 0.25
+  # Maximum reset duration in milliseconds
+  max_reset_duration: 300000
+
   # Interval between sensor readings
   sample_interval: 100ms
+  # Number of initial readings to discard for stabilization
+  intialization_readings: 20
   # Number of samples to take for each reading
   samples_per_reading: 10
-  # Total window size (should >= samples_per_reading)
-  total_window_size: 30
+  # Window size for the moving averaging over the readings
+  window_size: 3
+  # Amount of liters corresponding to the min/max calibration phase
+  calibration_liters: 2.0
+  # Liters per full rotation
+  liters_per_rotation: 1.0
 
 esphome:
   name: "${name}"
+  name_add_mac_suffix: ${name_add_mac_suffix}
   friendly_name: "${friendly_name}"
-  # Automatically add the mac address to the name so you can use a single firmware for all devices
-  name_add_mac_suffix: true
-  platformio_options:
-    board_build.flash_mode: "dio"
 
   # This will allow for (future) project identification, configuration and updates.
   project:
@@ -89,17 +102,27 @@ button:
     name: "Reset Calibration"
     icon: "mdi:restart"
     entity_category: "config"
+    disabled_by_default: true
     on_press:
       - lambda: |-
           id(consumption_since_restart) = 0;
           id(consumption_current) = 0;
           id(flow_rate_current) = 0;
+          id(calibration_state) = 0;
+
           id(min_a).state = 0;
           id(min_b).state = 0;
           id(min_c).state = 0;
           id(max_a).state = 0;
           id(max_b).state = 0;
           id(max_c).state = 0;
+          
+          id(fraction_0).state = 1.0f;
+          id(fraction_1).state = 1.0f;
+          id(fraction_2).state = 1.0f;
+          id(fraction_3).state = 1.0f;
+          id(fraction_4).state = 1.0f;
+          id(fraction_5).state = 1.0f;
 
 text_sensor:
   - platform: template
@@ -108,6 +131,29 @@ text_sensor:
     icon: "mdi:code-json"
     entity_category: "diagnostic"
     update_interval: never
+  - platform: template
+    id: calibration_state_sensor
+    name: "Calibration State"
+    icon: "mdi:tune"
+    entity_category: "diagnostic"
+    update_interval: never
+    lambda: |-
+      switch (id(calibration_state)) {
+        case 0:
+          return {"Uncalibrated"};
+        case 1:
+          return {"Preliminary Range Calibrated"};
+        case 2:
+          return {"Range Calibrated"};
+        case 3:
+          return {"States Calibrated"};
+        case 4: 
+          return {"Patterns Calibrated"};
+        case 5:
+          return {"Fully Calibrated"};
+        default:
+          return {};
+      }
 
 output:
   - platform: gpio
@@ -132,7 +178,7 @@ sensor:
     name: "Light Sensor A Dark"
     filters:
       - sliding_window_moving_average:
-          window_size: ${total_window_size}
+          window_size: ${window_size * samples_per_reading}
           send_every: ${samples_per_reading}
           send_first_at: ${samples_per_reading}
 
@@ -195,7 +241,17 @@ sensor:
 
   # Flow rate sensors
   - platform: template
-    name: "Current Flow Rate"
+    name: "Flow Rate"
+    id: flow_rate_now_sensor
+    device_class: "volume_flow_rate"
+    unit_of_measurement: "L/min"
+    accuracy_decimals: 2
+    update_interval: never
+    state_class: measurement
+    lambda: return id(flow_rate_now);
+
+  - platform: template
+    name: "Average Current Flow Rate"
     id: flow_rate_current_sensor
     device_class: "volume_flow_rate"
     unit_of_measurement: "L/min"
@@ -282,6 +338,42 @@ number:
     id: max_c
     name: "Max C"
 
+  - &fraction_common
+    platform: template
+    id: fraction_0
+    name: "Liters for Phase 0"
+    min_value: 0.0
+    max_value: 1.0
+    initial_value: 1.0
+    entity_category: "config"
+    device_class: "water"
+    unit_of_measurement: "L"
+    step: 0.001
+    update_interval: never
+    disabled_by_default: true
+    optimistic: true
+    restore_value: true
+
+  - <<: *fraction_common
+    id: fraction_1
+    name: "Liters for Phase 1"
+    
+  - <<: *fraction_common
+    id: fraction_2
+    name: "Liters for Phase 2"
+    
+  - <<: *fraction_common
+    id: fraction_3
+    name: "Liters for Phase 3"
+    
+  - <<: *fraction_common
+    id: fraction_4
+    name: "Liters for Phase 4"
+    
+  - <<: *fraction_common
+    id: fraction_5
+    name: "Liters for Phase 5"
+    
   - platform: template
     id: update_interval
     name: "Update Interval"
@@ -299,40 +391,34 @@ globals:
   # Consumption tracking variables
   - id: consumption_lifetime
     type: double
-    initial_value: "0"
     restore_value: true
   - id: consumption_since_restart
     type: double
-    initial_value: "0"
   - id: consumption_current
     type: float
-    initial_value: "0"
   - id: consumption_previous
     type: float
-    initial_value: "0"
     restore_value: true
 
   # Flow rate tracking variables
   - id: flow_rate_current
     type: float
-    initial_value: "0.0"
+  - id: flow_rate_now
+    type: float
   - id: flow_rate_previous
     type: float
-    initial_value: "0.0"
     restore_value: true
 
   # other state variables
-  - id: last_flow_time
-    type: uint32_t
-    initial_value: "0"
-
   - id: last_publish_time
     type: uint32_t
-    initial_value: "0"
 
   - id: phase
     type: int
-    initial_value: "0"
+
+  - id: calibration_state
+    type: int
+    # 0 = uncalibrated, 1 = range calibrated, 2 = fully calibrated
 
 # Reads the ADC states, computes the algorithm and updates the sensors. Also handles calibration and filtering.
 script:
@@ -357,9 +443,16 @@ script:
       - output.turn_off: led
       - output.turn_off: sensor_power
       - lambda: |-
+      
+          static int count = 0;
+          count++;
+          
+          // if (!api_is_connected()) return;
+          if (count < ${intialization_readings}) return;
+      
           auto min_average = [](float _min, float _max, float y, float alpha_cor) -> float {
             if (_min == 0) 
-                return y;
+              return y;
             else if (y < _min + 0.10 * (_max - _min))
               return (1.0f - alpha_cor) * _min + alpha_cor * y;
             else 
@@ -368,41 +461,54 @@ script:
 
           auto max_average = [](float _min, float _max, float y, float alpha_cor) -> float {
             if (_max == 0) 
-                return y;
+              return y;
             else if (y > _max - 0.10 * (_max - _min)) 
-                return (1.0f - alpha_cor) * _max + alpha_cor * y;
+              return (1.0f - alpha_cor) * _max + alpha_cor * y;
             else 
-                return _max;
+              return _max;
           };
 
-          ESP_LOGD("org", "al:%f bl:%f cl:%f ad:%f bd:%f cd:%f", 
-            id(light_sensor_a_light).state, id(light_sensor_b_light).state, id(light_sensor_c_light).state, 
-            id(light_sensor_a_dark).state, id(light_sensor_b_dark).state, id(light_sensor_c_dark).state);
+          auto update_calibration_state = [&](int new_state, const char* log_msg) {
+            if (id(calibration_state) < new_state) {
+              id(calibration_state) = new_state;
+              id(calibration_state_sensor).update();
+              ESP_LOGI("calibration", log_msg);
+              ESP_LOGD("log2csv", "calibration_state:%d", id(calibration_state));
+            }
+          };
+
+          uint32_t now = millis();
 
           float a = id(light_sensor_a_light).state - id(light_sensor_a_dark).state;
           float b = id(light_sensor_b_light).state - id(light_sensor_b_dark).state;
           float c = id(light_sensor_c_light).state - id(light_sensor_c_dark).state;
 
-          ESP_LOGD("sensor", "al:%f bl:%f cl:%f ad:%f bd:%f cd:%f a:%f b:%f c:%f", id(light_sensor_a_light).state, id(light_sensor_b_light).state, id(light_sensor_c_light).state, id(light_sensor_a_dark).state, id(light_sensor_b_dark).state, id(light_sensor_c_dark).state, a, b, c); 
+          ESP_LOGD("log2csv", "al:%f bl:%f cl:%f ad:%f bd:%f cd:%f a:%f b:%f c:%f", id(light_sensor_a_light).state, id(light_sensor_b_light).state, id(light_sensor_c_light).state, id(light_sensor_a_dark).state, id(light_sensor_b_dark).state, id(light_sensor_c_dark).state, a, b, c); 
 
-          if (a==0 || b==0 || c==0) {
-            // Initializing, ignore
-            return;
-          }
-          else if (a < ${lower_bound} ||  b < ${lower_bound} || c < ${lower_bound} ) {
+          if (a < ${lower_bound} ||  b < ${lower_bound} || c < ${lower_bound} ) {
             ESP_LOGW("light_level", "Signal too weak. Possible causes: too bright environment, LED failure, or sensor misalignment. Ignoring measurement.");
             return;
           }
           else if (a > ${upper_bound} || b > ${upper_bound} || c > ${upper_bound}) {
-            ESP_LOGW("light_level", "Too bright, ignoring this measurement");
+            ESP_LOGW("light_level", "Signal too bright. Possible causes: environment too bright or sensor misalignment. Ignoring measurement.");
             return;
           }
 
-          if (id(manual_calibration).state==false && id(consumption_since_restart) <= 2.0f) {
+
+          if (id(manual_calibration).state==true) {
+            if (id(max_a) - id(min_a) <= 0.0f || id(max_b) - id(min_b) <= 0.0f || id(max_c) - id(min_c) <= 0.0f) {
+              ESP_LOGW("manual_calibration", "Max cannot be less than min. Please adjust the values. Ignoring measurement.");
+              return;
+            } 
+            update_calibration_state(2, "Range calibrated (manual)");
+          }
+          else if (id(consumption_since_restart) <= ${calibration_liters}) {
             // correction factor for min/max averaging, adjust as needed
             // 0.1 is reasonable during calibration, if continuous adjustment is needed, 
             // suggest using 0.001 after calibration
             float alpha_cor = 0.1f; 
+
+            ESP_LOGD("log2csv", "a_min:%f b_min:%f c_min:%f a_max:%f b_max:%f c_max:%f", id(min_a).state, id(min_b).state, id(min_c).state, id(max_a).state, id(max_b).state, id(max_c).state);
 
             id(min_a).state = min_average(id(min_a).state, id(max_a).state, a, alpha_cor);
             id(min_b).state = min_average(id(min_b).state, id(max_b).state, b, alpha_cor);
@@ -411,140 +517,301 @@ script:
             id(max_b).state = max_average(id(min_b).state, id(max_b).state, b, alpha_cor);
             id(max_c).state = max_average(id(min_c).state, id(max_c).state, c, alpha_cor);
 
-            ESP_LOGD("calibration", "a_min:%f b_min:%f c_min:%f a_max:%f b_max:%f c_max:%f",
-                      id(min_a).state, id(min_b).state, id(min_c).state,
-                      id(max_a).state, id(max_b).state, id(max_c).state);
+            ESP_LOGD("log2csv", "a_min:%f b_min:%f c_min:%f a_max:%f b_max:%f c_max:%f", id(min_a).state, id(min_b).state, id(min_c).state, id(max_a).state, id(max_b).state, id(max_c).state);
 
-            if (id(max_a).state - id(min_a).state < 0.02f || id(max_b).state - id(min_b).state < 0.02f || id(max_c).state - id(min_c).state < 0.02f) {
-              if (id(consumption_since_restart) >= 2) {
-                ESP_LOGW("light_level", "Difference between max and min levels too small for reliable measurement.");
-              }
+            if (id(max_a).state - id(min_a).state < ${min_range} || id(max_b).state - id(min_b).state < ${min_range} || id(max_c).state - id(min_c).state < ${min_range}) {
               return;
+            } else {
+              // If difference large enough, allow to continue even if calibration not fully completed
+              update_calibration_state(1, "Preliminary range calibrated");
             }
+          } else {
+            update_calibration_state(2, "Range calibrated");
           }
 
           // Remove offset and scale to -1..1 range based on min/max
-          a = (a - (id(min_a).state + id(max_a).state)/2) / std::max(0.0001f, (id(max_a).state - id(min_a).state)/2);
-          b = (b - (id(min_b).state + id(max_b).state)/2) / std::max(0.0001f, (id(max_b).state - id(min_b).state)/2);
-          c = (c - (id(min_c).state + id(max_c).state)/2) / std::max(0.0001f, (id(max_c).state - id(min_c).state)/2);
+          a = 2.0f * (a-id(min_a).state) / (id(max_a).state - id(min_a).state) - 1.0f;
+          b = 2.0f * (b-id(min_b).state) / (id(max_b).state - id(min_b).state) - 1.0f;
+          c = 2.0f * (c-id(min_c).state) / (id(max_c).state - id(min_c).state) - 1.0f;
 
-          ESP_LOGD("scaled", "a:%f b:%f c:%f", a, b, c);
-
-          const float H = 0.2f;  // hysteresis margin (3% of full scale)
-
-          // Hysteresis comparisons
-          bool a_gt_b = (a > b + H);
-          bool b_gt_a = (b > a + H);
-
-          bool b_gt_c = (b > c + H);
-          bool c_gt_b = (c > b + H);
-
-          bool c_gt_a = (c > a + H);
-          bool a_gt_c = (a > c + H);
-
-
-          int s = id(phase);  // default: keep previous phase
-
-          if (a_gt_b && b_gt_c) s = 0;
-          else if (a_gt_c && c_gt_b) s = 1;
-          else if (c_gt_a && a_gt_b) s = 2;
-          else if (c_gt_b && b_gt_a) s = 3;
-          else if (b_gt_c && c_gt_a) s = 4;
-          else if (b_gt_a && a_gt_c) s = 5;
-          else s=-1;
-
+          ESP_LOGD("log2csv", "scaled_a:%f scaled_b:%f scaled_c:%f", a, b, c);
 
           const float HYS = 0.5f;  // hysteresis band around 0, tune this
 
-          static bool ah = false, bh = false, ch = false;
+          static struct PhaseInfo {
+            uint8_t  pattern;
+            uint32_t millis;
+            uint32_t prev_millis;
+            uint32_t prev_prev_millis;
+          } phase_info[6]={{255,0,0,0},{255,0,0,0},{255,0,0,0},{255,0,0,0},{255,0,0,0},{255,0,0,0}};
 
-          // A
-          if (!ah && a >  HYS)      ah = true;
-          else if (ah && a < -HYS)  ah = false;
+          enum state { UNKNOWN, HIGH, FALLING, LOW, RISING };
+          static state ah = UNKNOWN, bh = UNKNOWN, ch = UNKNOWN;
 
-          // B
-          if (!bh && b >  HYS)      bh = true;
-          else if (bh && b < -HYS)  bh = false;
+          uint8_t prev_pattern = (ah == HIGH || ah == RISING ? 0b100 : 0) | (bh == HIGH || bh == RISING ? 0b010 : 0) | (ch == HIGH || ch == RISING ? 0b001 : 0);
 
-          // C
-          if (!ch && c >  HYS)      ch = true;
-          else if (ch && c < -HYS)  ch = false;
-
-          uint8_t pattern = (ah ? 1 : 0) | (bh ? 2 : 0) | (ch ? 4 : 0);
-
-          int new_phase = id(phase);  // default: keep old
-
-          switch (pattern) {
-            case 0b100: new_phase = 0; break;
-            case 0b110: new_phase = 1; break;
-            case 0b010: new_phase = 2; break;
-            case 0b011: new_phase = 3; break;
-            case 0b001: new_phase = 4; break;
-            case 0b101: new_phase = 5; break;
-            // anything else: invalid/transient → ignore
-            default: new_phase = -1; break;
-          }
-
-          float pn[3] = {2*a - b - c, 2*b - a - c, 2*c - a - b};
-          if ((id(phase) & 1) == 0)
-            for (int k = 0; k < 3; ++k) pn[k] = -pn[k];
-          int idx = (id(phase) + 2) % 3;  // candidate phase
-
-          ESP_LOGD("phase", "prev_phase:%i cand_phase:%i alt_phase:%i est_phase:%i pn:%f %f %f", id(phase), idx, s, new_phase, pn[0], pn[1], pn[2]);
-
-          uint32_t current_time = millis();
-          float flow_rate = 0.0f;  
-          float liters_for_phase = 1.0f / 6.0f;
+          auto update_state = [&](state current, float val) -> state {
+              switch (current) {
+                  case HIGH: return val > 0.0f ? HIGH : FALLING;
+                  case LOW: return val < 0.0f ? LOW : RISING;
+                  case RISING: return val > HYS ? HIGH : RISING;
+                  case FALLING: return val < -HYS ? LOW : FALLING;
+                  case UNKNOWN: return val > HYS ? HIGH : (val < -HYS ? LOW : UNKNOWN);
+                  default: return UNKNOWN;
+              }
+          };
           
-          // TODO: consider calibrating relative duration of the phases based on typical flow patterns, 
-          // e.g. if phase 0 is typically shorter than others, it might indicate a faster flow and 
-          // thus more liters per phase change.
-
-          // Simple flow rate calculation based on time since last phase change
-          if (id(last_flow_time) > 0) {
-            flow_rate = (liters_for_phase * 60000.0) / float(current_time - id(last_flow_time));
-          }
-
-          if (pn[idx]+0.1 < pn[(idx + 1) % 3] && pn[idx]+0.1 < pn[(idx + 2) % 3] ) {
-              id(phase)=(id(phase)+1)%6;
-
-              id(consumption_lifetime) += liters_for_phase;
-              id(consumption_since_restart) += liters_for_phase;
-              id(consumption_current) += liters_for_phase;
-              
-              if (id(flow_rate_current) == 0.0f) {
-                id(flow_rate_current) = flow_rate;
-              } else {
-                id(flow_rate_current) = 0.7f * id(flow_rate_current) + 0.3f * flow_rate;
-              }
-              
-              id(last_flow_time) = current_time;
-          } else {
-
-            // Auto-reset consumption after reset_current_time seconds of no flow
-            // or when flow drops to reset_fraction of current flow rate.
-            if ( millis() - id(last_flow_time) >= ${reset_current_time} ||
-                  flow_rate < id(flow_rate_current) * ${reset_fraction} )
-            {
-              if (id(consumption_current) != 0.0f) {
-                id(consumption_previous) = id(consumption_current);
-                id(flow_rate_previous) = id(flow_rate_current);
-              }
-              
-              id(consumption_current) = 0.0f;
-              id(flow_rate_current) = 0.0f;
+          auto get_fraction = [&](int i) -> auto {
+            switch(i) {
+              case 0: return id(fraction_0);
+              case 1: return id(fraction_1);
+              case 2: return id(fraction_2);
+              case 3: return id(fraction_3);
+              case 4: return id(fraction_4);
+              case 5: return id(fraction_5);
+              default: return id(fraction_0); // should never happen
             }
-          }
-          
-          ESP_LOGD("results", "consumption_lifetime:%f consumption_since_restart:%f consumption_current:%f consumption_previous:%f flow_rate_current:%f flow_rate_previous:%f", 
-            id(consumption_lifetime), id(consumption_since_restart), id(consumption_current), id(consumption_previous), id(flow_rate_current), id(flow_rate_previous));
+          };  
 
+          bool prev_unknown = ah == UNKNOWN || bh == UNKNOWN || ch == UNKNOWN;
+
+          ah = update_state(ah, a), bh = update_state(bh, b), ch = update_state(ch, c);
+
+          if (prev_unknown || ah == UNKNOWN || bh == UNKNOWN || ch == UNKNOWN) {
+              return;
+          } else {
+            update_calibration_state(3, "States calibrated");
+          }
+
+          uint8_t pattern = (ah == HIGH || ah == RISING ? 0b100 : 0) | (bh == HIGH || bh == RISING ? 0b010 : 0) | (ch == HIGH || ch == RISING ? 0b001 : 0);
+
+          if (pattern != prev_pattern) {
+            ESP_LOGD("log2csv", "change_pattern:%u change_prev_pattern:%u", pattern, prev_pattern);
+          }
+
+          int crossings;
+          if ((pattern & 0b100) != (prev_pattern & 0b100)) ++crossings;
+          if ((pattern & 0b010) != (prev_pattern & 0b010)) ++crossings;
+          if ((pattern & 0b001) != (prev_pattern & 0b001)) ++crossings;
+
+          static int edge_phase = -1;
+          ESP_LOGD("log2csv", "pattern:%u prev_pattern:%u crossings:%u edge_phase:%d ah:%d bh:%d ch:%d", pattern, prev_pattern, crossings, edge_phase, ah, bh, ch);
+
+          static uint32_t last_phase_change = 0;
+          static uint32_t expected_phase_duration = 0;
+          static uint32_t flow_start_time = 0;
+
+          for (uint8_t i = 0; i < crossings; ++i) {
+            edge_phase = (edge_phase + 1) % 6;
+            auto &ci = phase_info[edge_phase];
+            auto &pi = phase_info[(edge_phase-1+6) % 6];
+            
+            static bool patterns_calibrated = false;
+            if (!patterns_calibrated) {
+              patterns_calibrated = true;
+              for (int i = 0; i < 6; ++i) {
+                patterns_calibrated = patterns_calibrated && phase_info[i].pattern != 255;
+              }
+              if (patterns_calibrated) {
+                update_calibration_state(4, "Patterns calibrated");
+                // TODO once pattern is calibrated: sort!
+                
+                // shift table so pattern with lowest number goes first, preserve
+                // the relative order of the other entries instead of sorting.
+                int min_idx = 0;
+                for (int i = 1; i < 6; ++i) {
+                  // compare the full 6‑phase sequence starting at `i` with the
+                  // sequence starting at `min_idx`. pick the rotation whose
+                  // “next phases” are lexicographically smallest
+                  bool better = false;
+                  for (int j = 0; j < 6; ++j) {
+                    uint8_t pi = phase_info[(i + j) % 6].pattern;
+                    uint8_t pm = phase_info[(min_idx + j) % 6].pattern;
+                    if (pi < pm) { better = true; break; }
+                    if (pi > pm) break;
+                  }
+                  if (better) {
+                    min_idx = i;
+                  }
+                }
+                  
+                if (min_idx != 0) {
+                  // rotate the array left by min_idx positions
+                  PhaseInfo tmp[6];
+                  for (int i = 0; i < 6; ++i)
+                    tmp[i] = phase_info[(min_idx + i) % 6];
+                  for (int i = 0; i < 6; ++i)
+                    phase_info[i] = tmp[i];
+                    
+                  // update the edge_phase to match the new ordering
+                  edge_phase = (edge_phase - min_idx + 6) % 6;
+                }           
+              }
+            }
+            
+            if (!patterns_calibrated) {
+              ci.pattern = pattern;
+              ci.prev_prev_millis = ci.prev_millis;
+              ci.prev_millis = ci.millis;
+              ci.millis = now;
+
+              ESP_LOGD("log2csv", "edge_phase:%d pattern:%u prev_pattern:%u millis:%d", edge_phase, pattern, prev_pattern, now);
+            } else {
+
+              // The pattern at the detected edge should ideally match the expected pattern for this phase; if not, log a warning and try to recover by looking for a matching pattern in the stored phase_info.
+              if (pattern != phase_info[edge_phase].pattern) {
+                ESP_LOGW("phase_detection", "Unexpected pattern %u at phase %d (expected %u). Possible causes: sensor misalignment, LED failure, or very fast flow.", pattern, edge_phase, phase_info[edge_phase].pattern);
+                
+                for (int i = 0; i < 6; ++i) {
+                  if (phase_info[i%6].pattern == pattern && phase_info[(i-1+6)%6].pattern == prev_pattern) {
+                    edge_phase = i;
+                    ci = phase_info[edge_phase];
+                    pi = phase_info[(edge_phase-1+6) % 6];
+                    ESP_LOGI("phase_detection", "resynced phase to %d (matched pattern 0x%02x / prev 0x%02x)", i, pattern, prev_pattern);
+                    break;
+                  }
+                }
+              }
+              
+              ci.prev_prev_millis = ci.prev_millis;
+              ci.prev_millis = ci.millis;
+              ci.millis = now;
+
+              uint32_t cdur = ci.millis - ci.prev_millis;
+              uint32_t pdur = pi.millis - pi.prev_millis;
+              uint32_t prev_cdur = ci.prev_millis - ci.prev_prev_millis;
+
+              if (ci.prev_prev_millis > 0 && pi.prev_millis > 0 && cdur >= pdur * 0.9f && cdur <= pdur * 1.1f && cdur >= prev_cdur * 0.9f && cdur <= prev_cdur * 1.1f) {
+                ESP_LOGI("updating_fraction", "Updating fraction for phase %d based on duration %d and prev_duration %d", edge_phase, cdur, pdur);
+                float new_fraction = float(ci.millis - pi.millis) / cdur;
+                
+                get_fraction(edge_phase)->state = get_fraction(edge_phase)->state == 1.0f ? new_fraction : (0.8f * get_fraction(edge_phase)->state + 0.2f * new_fraction);
+                ESP_LOGD("log2csv", "new_fraction:%f cdur:%d pdur:%d prev_cdur:%d", new_fraction, cdur, pdur, prev_cdur);
+              }
+
+              bool fractions_calibrated = true;
+              for (int i = 0; i < 6; ++i) {
+                fractions_calibrated = fractions_calibrated && get_fraction(i)->state < 1.0f;
+              }
+
+              if (fractions_calibrated) {
+                update_calibration_state(5, "Fractions calibrated");
+              }
+
+              ESP_LOGD("log2csv", "edge_phase:%d pattern:%u prev_pattern:%u duration:%d prev_duration:%d ci_fraction:%f", edge_phase, pattern, prev_pattern, cdur, pdur, get_fraction(edge_phase)->state);
+              for (int i = 0; i < 6; ++i) {
+                ESP_LOGD("log2csv",
+                          "pattern%d:%u millis%d:%u prev_millis%d:%u dur%d:%u fraction%d:%f",
+                          i, phase_info[i].pattern,
+                          i, phase_info[i].millis,
+                          i, phase_info[i].prev_millis,
+                          i, phase_info[i].millis - phase_info[i].prev_millis,
+                          i, get_fraction(i)->state);
+              }
+            }
+            
+            id(phase) = edge_phase;
+            float fraction = get_fraction(edge_phase)->state == 1.0f ? 1.0f/6.0f : get_fraction(edge_phase)->state;
+            float liters_for_phase = fraction * ${liters_per_rotation};
+            
+            static float liters_since_phase0 = 0.0f;
+            if (edge_phase == 5) {
+              liters_for_phase = ${liters_per_rotation} - liters_since_phase0;
+              liters_since_phase0 = 0.0f;
+            } else {
+              liters_since_phase0 += liters_for_phase;
+            }
+            
+            id(consumption_lifetime) += liters_for_phase;
+            id(consumption_since_restart) += liters_for_phase;
+            id(consumption_current) += liters_for_phase;
+            
+            float flow_rate = 0.0f;
+
+            if (flow_start_time == 0) {
+              flow_start_time = now;
+            } else {
+              if (last_phase_change > 0) {
+                flow_rate = liters_for_phase / (now - last_phase_change) * 60000.0f; // L/min
+                id(flow_rate_now) = id(flow_rate_now) <= 0.0f ? flow_rate : (0.7f * id(flow_rate_now) + 0.3f * flow_rate);         
+              }
+
+              if (now - flow_start_time > 0) {
+                // on average only half of the first phase transition belongs to the current flow, so use 0.5 as a correction factor for the first phase to prevent overestimation of flow rate at the start of the flow.
+                // for the consumption_current, we want to use the full amount as otherwise the totals do not add up
+                id(flow_rate_current) = ((id(flow_rate_current)==0?0.5:1.0) *id(consumption_current)) / ((now - flow_start_time) / 60000.0f); // L/min
+              }
+            }
+            
+            if ( fraction > 0.0f ) {
+              float next_fraction = get_fraction((edge_phase + 1) %6)->state == 1.0f ? 1.0f/6.0f : get_fraction((edge_phase + 1) %6)->state;
+              expected_phase_duration = (now - last_phase_change) / fraction * next_fraction;
+            } else {
+              expected_phase_duration = now - last_phase_change;
+            }
+
+            last_phase_change = now;
+
+            ESP_LOGD("log2csv", "liters_since_phase0:%f liters_for_phase:%f flow_rate:%f flow_rate_now_calc:%f now:%d fraction:%f", liters_since_phase0, liters_for_phase, flow_rate, id(flow_rate_now), now, fraction);
+          }
+
+
+          // reset phase timings, to prevent update of fractions after pause
+          /*        
+          bool times_calibrated = true;
+          for (int i = 0; i < 6; ++i) {
+            times_calibrated = times_calibrated && phase_info[i].prev_millis > 0;
+          }
+
+          if (times_calibrated && now - last_phase_change > expected_phase_duration * 1.2f ) {
+            for (int i = 0; i < 6; ++i) {
+              phase_info[i].millis = 0;
+              phase_info[i].prev_millis = 0;
+            }
+            ESP_LOGD("log2csv", "phase_reset:1");
+          }
+          */
+          
+          
+          // If duration is more then the expected phase duration, then the flow has reduced.
+          if ( id(flow_rate_current) > 0.0f && now - last_phase_change > expected_phase_duration * 1.1f )
+          {
+            float fraction = get_fraction((edge_phase + 1) %6)->state == 1.0f ? 1.0f/6.0f : get_fraction((edge_phase + 1) %6)->state;
+            float liters_for_phase = fraction * ${liters_per_rotation};
+            float flow_rate = liters_for_phase / (now - last_phase_change) * 60000.0f; // L/min
+            id(flow_rate_now) = id(flow_rate_now) < 0.1f ? flow_rate : (0.7f * id(flow_rate_now) + 0.3f * flow_rate);         
+
+            ESP_LOGD("log2csv", "duration_exceeded:1 expected_phase_duration:%d last_phase_change:%d now:%d flow_rate_adjusted:%f flow_rate_now_adjusted:%f", expected_phase_duration, last_phase_change, now, flow_rate,  id(flow_rate_now));
+          }
+
+          // If the flow_rate is below the minimum_flow_rate or duration is more than the expected phase duration multiplied by the reset fraction then assume the flow has stopped.
+          if ( (id(flow_rate_now)>0.0f || id(consumption_current) > 0.0f || id(flow_rate_current) > 0.0f) && (now - last_phase_change) * ${reset_fraction} > std::min(expected_phase_duration,(uint32_t)${max_reset_duration}) )
+          {
+            if (id(consumption_current) != 0.0f) {
+              id(consumption_previous) = id(consumption_current);
+              id(flow_rate_previous) = id(flow_rate_current);
+            }
+            
+            id(consumption_current) = 0.0f;
+            id(flow_rate_now) = 0.0f;
+            id(flow_rate_current) = 0.0f;
+            
+            flow_start_time = 0;
+            
+            ESP_LOGD("log2csv", "reset_flow:1");
+          }
+
+          ESP_LOGD("log2csv", "expected_phase_duration:%d last_phase_change:%d now:%d flow_rate_now:%f expected_phase_duration:%d", expected_phase_duration, last_phase_change, now, id(flow_rate_now), expected_phase_duration);
+            
+          ESP_LOGD("log2csv", "consumption_lifetime:%f consumption_since_restart:%f consumption_current:%f consumption_previous:%f flow_rate_now:%f flow_rate_current:%f flow_rate_previous:%f", 
+            id(consumption_lifetime), id(consumption_since_restart), id(consumption_current), id(consumption_previous), id(flow_rate_now), id(flow_rate_current), id(flow_rate_previous));
 
 # Triggers reading adc values and iterating algoritm.
 # Publish sensor states at the configured update interval or immediately if fastupdate is enabled.
 # Also publishes a debug JSON with all relevant values when debug mode is enabled.
 interval:
   - interval: ${sample_interval}
+    startup_delay: ${sample_interval}
     then:
       - script.execute: update_readings
       - if:
@@ -560,15 +827,9 @@ interval:
                 id(consumption_since_restart_sensor).publish_state(id(consumption_since_restart));
                 id(consumption_current_sensor).publish_state(id(consumption_current));
                 id(consumption_previous_sensor).publish_state(id(consumption_previous));
+                id(flow_rate_now_sensor).publish_state(id(flow_rate_now));
                 id(flow_rate_current_sensor).publish_state(id(flow_rate_current));
                 id(flow_rate_previous_sensor).publish_state(id(flow_rate_previous));
-
-                id(min_a).publish_state(id(min_a).state);
-                id(min_b).publish_state(id(min_b).state);
-                id(min_c).publish_state(id(min_c).state);
-                id(max_a).publish_state(id(max_a).state);
-                id(max_b).publish_state(id(max_b).state);
-                id(max_c).publish_state(id(max_c).state);
 
                 id(last_publish_time) = millis();
             - if:
