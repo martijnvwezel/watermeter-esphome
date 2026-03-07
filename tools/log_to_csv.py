@@ -10,7 +10,7 @@ first.
 Usage:
     python tools/log_to_csv.py path/to/log.txt > out.csv
     cat path/to/log.txt | python tools/log_to_csv.py
-    python tools/log_to_csv.py --fill-empty-with-previous path/to/log.txt > out.csv
+    python tools/log_to_csv.py --use-previous path/to/log.txt > out.csv
 """
 
 import argparse
@@ -64,8 +64,10 @@ def process_lines(lines, use_previous=False):
         if not kv_pairs:
             continue
 
+        has_al = any(k.lower() == 'al' for k, _ in kv_pairs)
+
         # flush when the record is complete (indicated by 'al')
-        if ' al:' in ln and current:
+        if has_al and current:
             row = {'time': current_time}
             row.update(current)
             rows.append(row)
@@ -85,6 +87,10 @@ def process_lines(lines, use_previous=False):
                 val = v
             current[k] = val
 
+    if current:
+        row = {'time': current_time}
+        row.update(current)
+        rows.append(row)
     return headers, rows
 
 
@@ -95,7 +101,7 @@ def main():
         '--use-previous',
         '-u',
         action='store_true',
-        help='forward-fill empty values in a row with the previous row value for that column',
+        help='if a value is empty, reuse the previous value for that column (instead of leaving it blank)',
     )
     args = p.parse_args()
 

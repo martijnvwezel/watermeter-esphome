@@ -1,6 +1,4 @@
 # TODO: update documentation
-# TODO: update debugging 
-# TODO: refactor code in .h: more subroutines, more comments, less global variables, better naming, more consistent units (liters vs liters per minute), etc.
 
 # These substitutions allow the end user to override certain values
 substitutions:
@@ -9,7 +7,7 @@ substitutions:
   # Number of samples to take for each reading
   samples_per_reading: 10
   # Number of initial readings to discard for stabilization
-  intialization_readings: 20
+  initialization_readings: 20
   # Window size for the moving averaging over the readings
   window_size: 3
 
@@ -111,7 +109,7 @@ captive_portal:
 switch:
   - platform: template
     optimistic: true
-    id: debugmodus
+    id: debug_mode
     name: Debug mode
     icon: "mdi:bug"
     entity_category: "diagnostic"
@@ -220,7 +218,7 @@ sensor:
     update_interval: never
     internal: true
     filters:
-      - skip_initial: ${intialization_readings}
+      - skip_initial: ${initialization_readings}
       - clamp:
           min_value: ${lower_bound}
           max_value: ${upper_bound}
@@ -311,7 +309,7 @@ number:
     update_interval: never
     min_value: 0
     max_value: 1000000000
-    step: 0.01
+    step: 1e-9
     set_action:
       - lambda: |- 
           id(global_consumption_lifetime) = x;
@@ -327,7 +325,7 @@ number:
     entity_category: "config"
     device_class: "voltage"
     unit_of_measurement: "V"
-    step: 0.001
+    step: 1e-9
     update_interval: never
     restore_value: true
     optimistic: true
@@ -398,7 +396,7 @@ number:
     entity_category: "config"
     device_class: "water"
     unit_of_measurement: "L"
-    step: 0.001
+    step: 1e-9
     update_interval: never
     disabled_by_default: true
     optimistic: true
