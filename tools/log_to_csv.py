@@ -10,6 +10,7 @@ first.
 Usage:
     python tools/log_to_csv.py path/to/log.txt > out.csv
     cat path/to/log.txt | python tools/log_to_csv.py
+    python tools/log_to_csv.py --fill-empty-with-previous path/to/log.txt > out.csv
 """
 
 import argparse
@@ -28,7 +29,7 @@ def parse_kv(msg):
     return KV_RE.findall(msg)
 
 
-def process_lines(lines):
+def process_lines(lines, use_previous=False):
     """Scan lines and collect rows + dynamic header order.
 
     Unlike the previous version, multiple ``log2csv`` entries may describe a
@@ -68,8 +69,9 @@ def process_lines(lines):
             row = {'time': current_time}
             row.update(current)
             rows.append(row)
-            current = {}
-            current_time = None
+            if not use_previous:
+                current = {}
+                current_time = None
 
         # always update time to the latest seen; the flushed row uses this
         current_time = time
@@ -89,10 +91,16 @@ def process_lines(lines):
 def main():
     p = argparse.ArgumentParser(description="Convert ESPHome log to CSV using log2csv tags.")
     p.add_argument('infile', nargs='?', help='log file (defaults to stdin)')
+    p.add_argument(
+        '--use-previous',
+        '-u',
+        action='store_true',
+        help='forward-fill empty values in a row with the previous row value for that column',
+    )
     args = p.parse_args()
 
     fh = open(args.infile, 'r', encoding='utf-8') if args.infile else sys.stdin
-    headers, rows = process_lines(fh)
+    headers, rows = process_lines(fh, args.use_previous)
 
     writer = csv.writer(sys.stdout, lineterminator='\n')
     writer.writerow(headers)
