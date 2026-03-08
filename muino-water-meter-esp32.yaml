@@ -44,6 +44,9 @@ substitutions:
   # Whether to wait for an API connection before processing readings. This can be useful for debugging to ensure you see all logs from the start of the process.
   wait_for_api_connection: false
   
+  # Maximum number of phases (should be multiple of 6, and at least as high as the number of phases in your meter, e.g. 6 for a standard meter, 12 for a meter with two bright fields on the disk)
+  max_phase_count: 12
+  
 esphome:
   name: "muino-water-meter"
   friendly_name: "Muino Water Meter"
@@ -64,6 +67,7 @@ esphome:
       - -D CALIBRATION_LITERS=${calibration_liters}
       - -D CALIBRATION_FRACTION_COUNT=${calibration_fraction_count}
       - -D WAIT_FOR_API_CONNECTION=${1 if wait_for_api_connection else 0}
+      - -D MAX_PHASE_COUNT=${max_phase_count}
     
   includes:
     - muino-water-meter-esp32.h
@@ -193,14 +197,12 @@ sensor:
       allow_other_uses: true
     id: light_sensor_b_dark
     name: "Light Sensor B Dark"
-
   - <<: *adc_common
     pin:
       number: 4
       allow_other_uses: true
     id: light_sensor_c_dark
     name: "Light Sensor C Dark"
-
   - <<: *adc_common
     pin:
       number: 2
@@ -208,21 +210,19 @@ sensor:
       ignore_strapping_warning: true
     id: light_sensor_a_light
     name: "Light Sensor A Light"
-
   - <<: *adc_common
     pin:
       number: 3
       allow_other_uses: true
     id: light_sensor_b_light
     name: "Light Sensor B Light"
-
   - <<: *adc_common
     pin:
       number: 4
       allow_other_uses: true
     id: light_sensor_c_light
     name: "Light Sensor C Light"
-    
+   
   - &diff_common
     platform: template
     name: "light_sensor_a_diff"
@@ -238,7 +238,7 @@ sensor:
     id: light_sensor_b_diff
     name: "light_sensor_b_diff"
     lambda: return id(light_sensor_b_light).state - id(light_sensor_b_dark).state;
-      
+     
   - <<: *diff_common
     id: light_sensor_c_diff
     name: "light_sensor_c_diff"
@@ -302,6 +302,22 @@ number:
           id(global_consumption_lifetime) = x;
           id(consumption_lifetime).publish_state(x);
 
+  - platform: template
+    id: nr_phases
+    name: "Number of Phases"
+    min_value: 6
+    max_value: ${max_phase_count}
+    initial_value: 6
+    step: 6
+    mode: slider
+    entity_category: "config"
+    update_interval: never
+    restore_value: true
+    optimistic: true
+    disabled_by_default: true
+    set_action:
+      - lambda: nr_phases_changed();
+
   - &num_common
     platform: template
     id: min_a
@@ -356,22 +372,36 @@ number:
   - <<: *pattern_common
     id: pattern_1
     name: "Pattern for Phase 1"
-    
   - <<: *pattern_common
     id: pattern_2
     name: "Pattern for Phase 2"
-    
   - <<: *pattern_common
     id: pattern_3
     name: "Pattern for Phase 3"
-    
   - <<: *pattern_common
     id: pattern_4
     name: "Pattern for Phase 4"
-    
   - <<: *pattern_common
     id: pattern_5
     name: "Pattern for Phase 5"
+  - <<: *pattern_common
+    id: pattern_6
+    name: "Pattern for Phase 6"
+  - <<: *pattern_common
+    id: pattern_7
+    name: "Pattern for Phase 7"
+  - <<: *pattern_common
+    id: pattern_8
+    name: "Pattern for Phase 8"
+  - <<: *pattern_common
+    id: pattern_9
+    name: "Pattern for Phase 9"
+  - <<: *pattern_common
+    id: pattern_10
+    name: "Pattern for Phase 10"
+  - <<: *pattern_common
+    id: pattern_11
+    name: "Pattern for Phase 11"
 
   - &fraction_common
     platform: template
@@ -392,22 +422,36 @@ number:
   - <<: *fraction_common
     id: fraction_1
     name: "Liters for Phase 1"
-    
   - <<: *fraction_common
     id: fraction_2
     name: "Liters for Phase 2"
-    
   - <<: *fraction_common
     id: fraction_3
     name: "Liters for Phase 3"
-    
   - <<: *fraction_common
     id: fraction_4
     name: "Liters for Phase 4"
-    
   - <<: *fraction_common
     id: fraction_5
     name: "Liters for Phase 5"
+  - <<: *fraction_common
+    id: fraction_6
+    name: "Liters for Phase 6"
+  - <<: *fraction_common
+    id: fraction_7
+    name: "Liters for Phase 7"
+  - <<: *fraction_common
+    id: fraction_8
+    name: "Liters for Phase 8"
+  - <<: *fraction_common
+    id: fraction_9
+    name: "Liters for Phase 9"
+  - <<: *fraction_common
+    id: fraction_10
+    name: "Liters for Phase 10"
+  - <<: *fraction_common
+    id: fraction_11
+    name: "Liters for Phase 11"
     
 globals:
   # sensors use float values, but we want to be able to set the lifetime consumption with 

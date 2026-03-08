@@ -19,19 +19,21 @@ void process_readings();
 // Reset the calibration to the initial state.
 void reset_calibration_internal();
 
+// When the amount of phases changes, reset the calibration to the initial state to allow recalibration with the new number of phases.
+void nr_phases_changed();
 
 // Constants for calibration
 
 // Smoothing weight for min/max calibration, between 0 and 1. Higher values give more weight to new readings, lower values give more weight to historical values.
-constexpr float SENSOR_SMOOTHING_WEIGHT                        = 0.1f;
+constexpr float SENSOR_SMOOTHING_WEIGHT = 0.1f;
 // Hysteresis band for signal state changes, as a fraction of the range between min and max.
-constexpr float SENSOR_SMOOTHING_BAND                          = 0.1f;
+constexpr float SENSOR_SMOOTHING_BAND = 0.1f;
 // Range for the duration match when calibrating fractions, as a fraction of the expected duration.
-constexpr float DURATION_MATCH_DEVIATION                       = 0.1f;
+constexpr float DURATION_MATCH_DEVIATION = 0.1f;
 // Smoothing weight for flow rate calculation, between 0 and 1. Higher values give more weight to new readings, lower values give more weight to historical values.
-constexpr float FLOW_RATE_SMOOTHING_WEIGHT                     = 0.3f;
+constexpr float FLOW_RATE_SMOOTHING_WEIGHT = 0.3f;
 // Smoothing weight for fraction calibration, between 0 and 1. Higher values give more weight to new readings, lower values give more weight to historical values.
-constexpr float FRACTION_SMOOTHING_WEIGHT                      = 0.3f;
+constexpr float FRACTION_SMOOTHING_WEIGHT = 0.3f;
 // Multiplier for expected phase duration during preliminary fraction calibration, to allow more time for calibration before patterns are fully known.
 constexpr float PRELIMINARY_EXPECTED_PHASE_DURATION_MULTIPLIER = 4.0f;
 
@@ -39,10 +41,9 @@ constexpr float PRELIMINARY_EXPECTED_PHASE_DURATION_MULTIPLIER = 4.0f;
 constexpr float MILLIS_IN_MINUTE = 60000.0f;
 
 // Constants for phase and pattern detection
-constexpr int   PHASE_COUNT                                    = 6;
-constexpr int   PATTERN_BIT_A                                  = 0b100;
-constexpr int   PATTERN_BIT_B                                  = 0b010;
-constexpr int   PATTERN_BIT_C                                  = 0b001;
+constexpr int PATTERN_BIT_A = 0b100;
+constexpr int PATTERN_BIT_B = 0b010;
+constexpr int PATTERN_BIT_C = 0b001;
 
 // Enums and structs for calibration state, signal state, and phase information
 enum CalibrationState { UNINITIALIZED, UNCALIBRATED, PRELIMINARY_RANGE, STATES, RANGE, PATTERNS, PRELIMINARY_FRACTIONS, FRACTIONS };
@@ -57,17 +58,20 @@ struct PhaseInfo {
 };
 
 // Global variables for calibration and state tracking
-static struct PhaseInfo phase_info[PHASE_COUNT]      = {};
+static struct PhaseInfo phase_info[MAX_PHASE_COUNT]  = {};
 static uint32_t         last_phase_change            = 0;
 static uint32_t         expected_phase_duration      = 0;
 static uint32_t         flow_start_time              = 0;
 static float            consumption_since_flow_start = 0.0f;
 static int              edge_phase                   = 0;
-static SignalState      ah = UNKNOWN, bh = UNKNOWN, ch = UNKNOWN;
+static SignalState      ah                           = UNKNOWN;
+static SignalState      bh                           = UNKNOWN;
+static SignalState      ch                           = UNKNOWN;
+static CalibrationState calibrated                   = UNINITIALIZED;
 static bool             all_extremes_known;
 static bool             all_patterns_known;
 static bool             all_fractions_known;
-static CalibrationState calibrated = UNINITIALIZED;
+static int              phases;
 
 /// Get the name of the current calibration state for logging purposes
 ///
@@ -131,92 +135,84 @@ float max_average(float _min, float _max, float y, float alpha_cor) {
         return _max;
 };
 
-/// Get the fraction value for the given index.
-///
-/// @param i The index of the fraction.
-/// @return The value of the fraction.
-float get_fraction(int i) {
-    switch (i) {
-        case 0: return id(fraction_0).state;
-        case 1: return id(fraction_1).state;
-        case 2: return id(fraction_2).state;
-        case 3: return id(fraction_3).state;
-        case 4: return id(fraction_4).state;
-        case 5: return id(fraction_5).state;
-        default: return id(fraction_0).state; // should never happen
-    }
-};
-
 // Workaround to save template number value changes to flash, since publish_state doesn't work for template numbers.
-template<typename TNumber, typename TValue>
-void set_value(TNumber& number, TValue value) {
+template <typename TNumber, typename TValue> void set_value(TNumber& number, TValue value) {
     auto call = number.make_call();
     call.set_value(value);
     call.perform();
 }
 
-/// Set the fraction value for the given index.
-/// @param i The index of the fraction.
-/// @param value The value to set for the fraction.
+inline int phase_idx(int i) {
+    int idx = i % phases;
+    return idx < 0 ? idx + phases : idx;
+}
+
+float get_fraction(int i) {
+    decltype(&id(fraction_0)) fractions[] = {
+        &id(fraction_0), &id(fraction_1), &id(fraction_2), &id(fraction_3), &id(fraction_4), &id(fraction_5), &id(fraction_6), &id(fraction_7), &id(fraction_8), &id(fraction_9), &id(fraction_10), &id(fraction_11),
+    };
+
+    return fractions[phase_idx(i)]->state;
+}
+
 void set_fraction(int i, float value) {
-    switch (i) {
-        case 0: set_value(id(fraction_0), value); break;
-        case 1: set_value(id(fraction_1), value); break;
-        case 2: set_value(id(fraction_2), value); break;
-        case 3: set_value(id(fraction_3), value); break;
-        case 4: set_value(id(fraction_4), value); break;
-        case 5: set_value(id(fraction_5), value); break;
-        default: set_value(id(fraction_0), value); break; // should never happen
-    }
-};
+    decltype(&id(fraction_0)) fractions[] = {
+        &id(fraction_0), &id(fraction_1), &id(fraction_2), &id(fraction_3), &id(fraction_4), &id(fraction_5), &id(fraction_6), &id(fraction_7), &id(fraction_8), &id(fraction_9), &id(fraction_10), &id(fraction_11),
+    };
 
-/// Get the pattern value for the given index.
-/// @param i The index of the pattern.
-/// @return The value of the pattern.
+    set_value(*fractions[phase_idx(i)], value);
+}
+
 int get_pattern(int i) {
-    switch (i) {
-        case 0: return id(pattern_0).state;
-        case 1: return id(pattern_1).state;
-        case 2: return id(pattern_2).state;
-        case 3: return id(pattern_3).state;
-        case 4: return id(pattern_4).state;
-        case 5: return id(pattern_5).state;
-        default: return id(pattern_0).state; // should never happen
-    }
-};
+    decltype(&id(pattern_0)) patterns[] = {
+        &id(pattern_0), &id(pattern_1), &id(pattern_2), &id(pattern_3), &id(pattern_4), &id(pattern_5), &id(pattern_6), &id(pattern_7), &id(pattern_8), &id(pattern_9), &id(pattern_10), &id(pattern_11),
+    };
 
-/// Set the pattern value for the given index.
-///
-/// @param i The index of the pattern.
-/// @param value The value to set for the pattern.
+    return static_cast<int>(patterns[phase_idx(i)]->state);
+}
+
 void set_pattern(int i, int value) {
-    switch (i) {
-        case 0: set_value(id(pattern_0), value); break;
-        case 1: set_value(id(pattern_1), value); break;
-        case 2: set_value(id(pattern_2), value); break;
-        case 3: set_value(id(pattern_3), value); break;
-        case 4: set_value(id(pattern_4), value); break;
-        case 5: set_value(id(pattern_5), value); break;
-        default: set_value(id(pattern_0), value); break; // should never happen
-    }
-};
+    decltype(&id(pattern_0)) patterns[] = {
+        &id(pattern_0), &id(pattern_1), &id(pattern_2), &id(pattern_3), &id(pattern_4), &id(pattern_5), &id(pattern_6), &id(pattern_7), &id(pattern_8), &id(pattern_9), &id(pattern_10), &id(pattern_11),
+    };
+    set_value(*patterns[phase_idx(i)], value);
+}
 
-/// Reset the calibration to the initial state, and publish the reset state to all relevant sensors.
-void reset_calibration_internal() {
-    ESP_LOGI("calibration", "Resetting calibration to initial state.");
+PhaseInfo& get_phase_info(int i) {
+    return phase_info[phase_idx(i)];
+}
+
+void set_phase_info(int i, const PhaseInfo& info) {
+    phase_info[phase_idx(i)] = info;
+}
+
+void reset_partial_calibration() {
     edge_phase                   = 0;
     last_phase_change            = 0;
     expected_phase_duration      = 0;
     flow_start_time              = 0;
     consumption_since_flow_start = 0.0f;
 
-    ah = bh = ch = UNKNOWN;
-
-    for (int i = 0; i < PHASE_COUNT; ++i) {
+    phases=MAX_PHASE_COUNT;
+    for (int i = 0; i < MAX_PHASE_COUNT; ++i) {
         set_pattern(i, -1);
         set_fraction(i, -0.001f);
         phase_info[i] = {};
     }
+    phases=phase_idx(id(nr_phases).state);
+
+    id(consumption_since_restart).publish_state(0);
+    id(consumption_current).publish_state(0);
+    id(flow_rate_current).publish_state(0);
+
+    update_calibration_state(UNINITIALIZED);
+}
+
+/// Reset the calibration to the initial state, and publish the reset state to all relevant sensors.
+void reset_calibration_internal() {
+    ESP_LOGI("calibration", "Resetting calibration to initial state.");
+
+    ah = bh = ch = UNKNOWN;
 
     set_value(id(min_a), 0);
     set_value(id(min_b), 0);
@@ -225,11 +221,13 @@ void reset_calibration_internal() {
     set_value(id(max_b), 0);
     set_value(id(max_c), 0);
 
-    id(consumption_since_restart).publish_state(0);
-    id(consumption_current).publish_state(0);
-    id(flow_rate_current).publish_state(0);
+    reset_partial_calibration();
+};
 
-    update_calibration_state(UNINITIALIZED);
+/// Reset the calibration to the initial state when the number of phases changes.
+void nr_phases_changed() {
+    ESP_LOGI("calibration", "Number of phases changed, resetting calibration to initial state.");
+    reset_partial_calibration();
 };
 
 /// Update the state of a signal based on its current state and a new value, using a hysteresis band to prevent rapid state changes due to noise.
@@ -276,7 +274,7 @@ void initialize_calibration_flags() {
     all_patterns_known  = true;
     all_fractions_known = true;
 
-    for (int i = 0; i < PHASE_COUNT; ++i) {
+    for (int i = 0; i < phases; ++i) {
         all_patterns_known  = all_patterns_known && get_pattern(i) >= 0;
         all_fractions_known = all_fractions_known && get_fraction(i) >= 0.0f;
     }
@@ -373,18 +371,18 @@ void update_calibration_state_from_known_data() {
 ///
 /// @param shift The number of positions to rotate the phase tables to the left.
 void rotate_phase_tables_left(int shift) {
-    PhaseInfo tmp_phase[PHASE_COUNT];
-    int       tmp_pattern[PHASE_COUNT];
-    float     tmp_fraction[PHASE_COUNT];
+    PhaseInfo tmp_phase[MAX_PHASE_COUNT];
+    int       tmp_pattern[MAX_PHASE_COUNT];
+    float     tmp_fraction[MAX_PHASE_COUNT];
 
-    for (int i = 0; i < PHASE_COUNT; ++i) {
-        tmp_phase[i]    = phase_info[(shift + i) % PHASE_COUNT];
-        tmp_pattern[i]  = get_pattern((shift + i) % PHASE_COUNT);
-        tmp_fraction[i] = get_fraction((shift + i) % PHASE_COUNT);
+    for (int i = 0; i < phases; ++i) {
+        tmp_phase[i]    = get_phase_info(shift + i);
+        tmp_pattern[i]  = get_pattern(shift + i);
+        tmp_fraction[i] = get_fraction(shift + i);
     }
 
-    for (int i = 0; i < PHASE_COUNT; ++i) {
-        phase_info[i] = tmp_phase[i];
+    for (int i = 0; i < phases; ++i) {
+        set_phase_info(i, tmp_phase[i]);
         set_pattern(i, tmp_pattern[i]);
         set_fraction(i, tmp_fraction[i]);
     }
@@ -393,7 +391,7 @@ void rotate_phase_tables_left(int shift) {
 /// Update the pattern calibration based on the known patterns, and rotate the phase tables if necessary to align with the detected patterns.
 void update_pattern_calibration() {
     bool missing_pattern = false;
-    for (int i = 0; i < PHASE_COUNT; ++i) {
+    for (int i = 0; i < phases; ++i) {
         missing_pattern = missing_pattern || get_pattern(i) < 0;
     }
     if (missing_pattern) {
@@ -401,11 +399,11 @@ void update_pattern_calibration() {
     }
 
     int min_idx = 0;
-    for (int i = 1; i < PHASE_COUNT; ++i) {
+    for (int i = 1; i < phases; ++i) {
         bool better = false;
-        for (int j = 0; j < PHASE_COUNT; ++j) {
-            const int pi = get_pattern((i + j) % PHASE_COUNT);
-            const int pm = get_pattern((min_idx + j) % PHASE_COUNT);
+        for (int j = 0; j < phases; ++j) {
+            const int pi = get_pattern(i + j);
+            const int pm = get_pattern(min_idx + j);
             if (pi < pm) {
                 better = true;
                 break;
@@ -420,17 +418,17 @@ void update_pattern_calibration() {
 
     if (min_idx != 0) {
         rotate_phase_tables_left(min_idx);
-        edge_phase = (edge_phase - min_idx + PHASE_COUNT) % PHASE_COUNT;
+        edge_phase = phase_idx(edge_phase - min_idx);
     }
 
     update_calibration_state(PATTERNS);
 }
 
-/// Align the edge phase to the detected pattern. 
-/// If the detected pattern does not match the expected pattern for the current edge phase, 
-/// search for the phase that matches the detected pattern and has a valid previous pattern, and update the edge phase accordingly. 
+/// Align the edge phase to the detected pattern.
+/// If the detected pattern does not match the expected pattern for the current edge phase,
+/// search for the phase that matches the detected pattern and has a valid previous pattern, and update the edge phase accordingly.
 /// If no matching phase is found, log an error message.
-/// 
+///
 /// @param pattern The detected pattern.
 /// @param prev_pattern The previous pattern.
 void align_edge_phase_to_pattern(int pattern, int prev_pattern) {
@@ -439,8 +437,8 @@ void align_edge_phase_to_pattern(int pattern, int prev_pattern) {
     }
 
     const int old_edge_phase = edge_phase;
-    for (int i = 0; i < PHASE_COUNT; ++i) {
-        if (get_pattern(i) == pattern && (get_pattern((i - 1 + PHASE_COUNT) % PHASE_COUNT) < 0 || get_pattern((i - 1 + PHASE_COUNT) % PHASE_COUNT) == prev_pattern)) {
+    for (int i = 0; i < phases; ++i) {
+        if (get_pattern(i) == pattern && (get_pattern(i - 1) < 0 || get_pattern(i - 1) == prev_pattern)) {
             edge_phase = i;
             break;
         }
@@ -454,11 +452,11 @@ void align_edge_phase_to_pattern(int pattern, int prev_pattern) {
 }
 
 /// Update the fraction calibration based on the detected patterns and durations.
-/// 
+///
 /// @param now The current time in milliseconds.
 void update_fraction_calibration(uint32_t now) {
-    auto& ci = phase_info[edge_phase];
-    auto& pi = phase_info[(edge_phase - 1 + PHASE_COUNT) % PHASE_COUNT];
+    auto& ci = get_phase_info(edge_phase);
+    auto& pi = get_phase_info(edge_phase - 1);
 
     ci.prev_prev_millis = ci.prev_millis;
     ci.prev_millis      = ci.millis;
@@ -468,9 +466,9 @@ void update_fraction_calibration(uint32_t now) {
     const uint32_t pdur      = pi.millis - pi.prev_millis;
     const uint32_t prev_cdur = ci.prev_millis - ci.prev_prev_millis;
 
-    if (ci.prev_prev_millis > 0 && pi.prev_millis > 0 && cdur >= pdur * (1.0f-DURATION_MATCH_DEVIATION) && cdur <= pdur * (1.0f+DURATION_MATCH_DEVIATION) && cdur >= prev_cdur * (1.0f-DURATION_MATCH_DEVIATION) && cdur <= prev_cdur * (1.0f+DURATION_MATCH_DEVIATION)) {
+    if (ci.prev_prev_millis > 0 && pi.prev_millis > 0 && cdur >= pdur * (1.0f - DURATION_MATCH_DEVIATION) && cdur <= pdur * (1.0f + DURATION_MATCH_DEVIATION) && cdur >= prev_cdur * (1.0f - DURATION_MATCH_DEVIATION) && cdur <= prev_cdur * (1.0f + DURATION_MATCH_DEVIATION)) {
         const float new_fraction = LITERS_PER_ROTATION * (ci.millis - pi.millis) / cdur;
-        set_fraction(edge_phase, get_fraction(edge_phase) < 0 ? new_fraction : ((1.0f-FRACTION_SMOOTHING_WEIGHT) * get_fraction(edge_phase) + FRACTION_SMOOTHING_WEIGHT * new_fraction));
+        set_fraction(edge_phase, get_fraction(edge_phase) < 0 ? new_fraction : ((1.0f - FRACTION_SMOOTHING_WEIGHT) * get_fraction(edge_phase) + FRACTION_SMOOTHING_WEIGHT * new_fraction));
         ci.calibration_count++;
 
         ESP_LOGD("log2csv", "duration:%d prev_duration:%d fraction:%f calibration_count:%d", cdur, pdur, get_fraction(edge_phase), ci.calibration_count);
@@ -478,30 +476,30 @@ void update_fraction_calibration(uint32_t now) {
 
     bool preliminarily_calibrated = true;
     bool fully_calibrated         = true;
-    for (int i = 0; i < PHASE_COUNT; ++i) {
-        preliminarily_calibrated = preliminarily_calibrated && phase_info[i].calibration_count > 0;
-        fully_calibrated         = fully_calibrated && phase_info[i].calibration_count >= CALIBRATION_FRACTION_COUNT;
+    for (int i = 0; i < phases; ++i) {
+        preliminarily_calibrated = preliminarily_calibrated && get_phase_info(i).calibration_count > 0;
+        fully_calibrated         = fully_calibrated && get_phase_info(i).calibration_count >= CALIBRATION_FRACTION_COUNT;
     }
 
     if (preliminarily_calibrated) {
         float total_liters = 0.0f;
-        for (int i = 0; i < PHASE_COUNT; ++i) {
+        for (int i = 0; i < phases; ++i) {
             total_liters += get_fraction(i);
         }
 
         float total_liters2 = 0.0f;
-        for (int i = 0; i < PHASE_COUNT; ++i) {
+        for (int i = 0; i < phases; ++i) {
             set_fraction(i, get_fraction(i) * LITERS_PER_ROTATION / total_liters);
             total_liters2 += get_fraction(i);
         }
 
-        set_fraction(PHASE_COUNT - 1, get_fraction(PHASE_COUNT - 1) + (LITERS_PER_ROTATION - total_liters2));
+        set_fraction(0, get_fraction(0) + (LITERS_PER_ROTATION - total_liters2));
         ESP_LOGD("log2csv", "total_liters:%f total_liters2:%f", total_liters, total_liters2);
         update_calibration_state(fully_calibrated ? FRACTIONS : PRELIMINARY_FRACTIONS);
     }
 
-    for (int i = 0; i < PHASE_COUNT; ++i) {
-        ESP_LOGD("log2csv", "pattern%d:%u fraction%d:%f calibration_count%d:%d millis%d:%u prev_millis%d:%u dur%d:%u", i, get_pattern(i), i, get_fraction(i), i, phase_info[i].calibration_count, i, phase_info[i].millis, i, phase_info[i].prev_millis, i, phase_info[i].millis - phase_info[i].prev_millis);
+    for (int i = 0; i < phases; ++i) {
+        ESP_LOGD("log2csv", "pattern%d:%u fraction%d:%f calibration_count%d:%d millis%d:%u prev_millis%d:%u dur%d:%u", i, get_pattern(i), i, get_fraction(i), i, get_phase_info(i).calibration_count, i, get_phase_info(i).millis, i, get_phase_info(i).prev_millis, i, get_phase_info(i).millis - get_phase_info(i).prev_millis);
     }
 }
 
@@ -509,7 +507,7 @@ void update_fraction_calibration(uint32_t now) {
 ///
 /// @param now The current time in milliseconds.
 void calculate_consumption_and_flow(uint32_t now) {
-    const float liters_for_phase = calibrated < PRELIMINARY_FRACTIONS ? LITERS_PER_ROTATION / PHASE_COUNT : get_fraction(edge_phase);
+    const float liters_for_phase = calibrated < PRELIMINARY_FRACTIONS ? LITERS_PER_ROTATION / phases : get_fraction(edge_phase);
 
     id(global_consumption_lifetime) += liters_for_phase;
     id(consumption_lifetime).publish_state(id(global_consumption_lifetime));
@@ -524,7 +522,7 @@ void calculate_consumption_and_flow(uint32_t now) {
     if (flow_start_time > 0) {
         if (liters_for_phase > 0.0f) {
             flow_rate = liters_for_phase / (now - last_phase_change) * MILLIS_IN_MINUTE; // L/min
-            id(flow_rate_now).publish_state(id(flow_rate_now).state <= 0.0f ? flow_rate : ((1.0f-FLOW_RATE_SMOOTHING_WEIGHT) * id(flow_rate_now).state + FLOW_RATE_SMOOTHING_WEIGHT * flow_rate));
+            id(flow_rate_now).publish_state(id(flow_rate_now).state <= 0.0f ? flow_rate : ((1.0f - FLOW_RATE_SMOOTHING_WEIGHT) * id(flow_rate_now).state + FLOW_RATE_SMOOTHING_WEIGHT * flow_rate));
         }
 
         id(flow_rate_current).publish_state(consumption_since_flow_start / (now - flow_start_time) * MILLIS_IN_MINUTE); // L/min
@@ -536,7 +534,7 @@ void calculate_consumption_and_flow(uint32_t now) {
     }
 
     if (liters_for_phase > 0.0f) {
-        const float next_liters_for_phase = calibrated < PRELIMINARY_FRACTIONS ? LITERS_PER_ROTATION / PHASE_COUNT : get_fraction((edge_phase + 1) % PHASE_COUNT);
+        const float next_liters_for_phase = calibrated < PRELIMINARY_FRACTIONS ? LITERS_PER_ROTATION / phases : get_fraction(edge_phase + 1);
         expected_phase_duration           = (now - last_phase_change) / liters_for_phase * next_liters_for_phase;
 
         if (calibrated < PRELIMINARY_FRACTIONS) {
@@ -621,7 +619,7 @@ int update_pattern_and_count_crossings(float a, float b, float c, int& pattern, 
 /// @param pattern The current pattern.
 /// @param prev_pattern The previous pattern.
 void handle_crossing(uint32_t now, int pattern, int prev_pattern) {
-    edge_phase = (edge_phase + 1) % PHASE_COUNT;
+    edge_phase = phase_idx(edge_phase + 1);
     ESP_LOGD("log2csv", "edge_phase:%d", edge_phase);
 
     if (calibrated < PATTERNS) {
@@ -637,11 +635,11 @@ void handle_crossing(uint32_t now, int pattern, int prev_pattern) {
     }
 
     align_edge_phase_to_pattern(pattern, prev_pattern);
-    
+
     if (calibrated == PRELIMINARY_FRACTIONS - 1 || calibrated == FRACTIONS - 1) {
         update_fraction_calibration(now);
     }
-    
+
     calculate_consumption_and_flow(now);
 }
 
@@ -678,6 +676,8 @@ void process_readings() {
     }
 
     const uint32_t now = millis();
+
+    phases = (int)(id(nr_phases).state + 0.5f);
 
     float a = id(light_sensor_a_diff).state;
     float b = id(light_sensor_b_diff).state;
@@ -721,9 +721,9 @@ void process_readings() {
 
     // Update the calibration state based on the known data.
     update_calibration_state_from_known_data();
-   
+
     // Handle each crossing that occurred since the last reading.
-    // Updating the edge phase, finalizing pattern calibration if necessary, aligning the edge phase to the detected pattern, 
+    // Updating the edge phase, finalizing pattern calibration if necessary, aligning the edge phase to the detected pattern,
     // updating fraction calibration if necessary, and applying consumption and flow calculations.
     for (int i = 0; i < crossings; ++i) {
         handle_crossing(now, pattern, prev_pattern);

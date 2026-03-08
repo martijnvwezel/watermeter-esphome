@@ -48,10 +48,10 @@ Thank you for buying the Muino Water Meter Reader :). Let me try to explain the 
 4. Once connected, open http://192.168.4.1 and select the Wi-Fi SSID the Muino device should join. Enter the passphrase.
 5. The Muino Smart Water Meter will try to connect to the selected Wi-Fi network. After a short while, check your home network for the device IP address.
 6. In Home Assistant, go to Settings, add the ESPHome integration, and add the Muino device by IP address.
-7. In Home Assistant, go to Energy -> Energy Configuration (three-dot menu), add the new sensor (`sensor.liters`), and optionally set the price per cubic meter.
+7. Only in case you have a meter with 12 phases per rotation (for example, with two bright fields on the disk), set `Number of Phases` to 12 in Home Assistant. 
 8. Calibrate the water meter by running approximately 7 liters of water at a constant flow rate. This allows the sensor to calibrate itself for accurate readings.
 9. In Home Assistant, set `Lifetime Consumption` to match your physical meter value.
-10. Add the sensor to your Home Assistant Energy dashboard to monitor consumption in real time. Optionally add pricing to track water costs.
+10. In Home Assistant, go to Energy -> Energy Configuration (three-dot menu), add the new sensor (`sensor.consumption_lifetime`), and optionally set the price per cubic meter.
 11. Add the sensors to your custom Home Assistant dashboard and enjoy sub-liter precision monitoring.
 
 ## Home Assistant sensors and controls
@@ -84,6 +84,7 @@ It provides the following configuration entities (all except `lifetime_consumpti
 
 - `lifetime_consumption`: Input number to set lifetime consumption in liters. Useful to align the value with your physical meter.
 
+- `nr_phases`: Set the number of phases per rotation. This is used for non-standard water meters with a different number of phases (e.g. with two bright fields on the disk, there would be 12 phases). Patterns and fractions need to be recalibrated after changing this value. 
 - `reset_calibration`: Resets calibration data and requires recalibration.
 - `restart`: Restarts the Muino Smart Water Meter. `consumption_since_restart` resets to 0, while `consumption_lifetime` and calibration are retained.
 - `Min A`, `Min B`, `Min C`: Input numbers for minimum values of sensors A, B, and C used during calibration.
