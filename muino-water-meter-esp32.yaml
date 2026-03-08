@@ -1,4 +1,10 @@
-# TODO: update documentation
+# Muino Water Meter ESP32 Configuration
+# This configuration is designed for an ESP32-based water meter sensor using light sensors to detect flow.
+# It includes calibration options, flow rate and consumption calculations, and a debug mode for troubleshooting.
+#
+# Written by:
+#  - Martijn van Wezel (@martijnvwezel)
+#  - Arjan Mels (@arjanmels)
 
 # These substitutions allow the end user to override certain values
 substitutions:
@@ -65,6 +71,7 @@ esphome:
   on_boot:
     priority: -10
     then:
+      # Initialize the global variable for lifetime consumption and sensor values to defaults.
       - lambda: |-
           id(consumption_lifetime).publish_state(id(global_consumption_lifetime));
           id(consumption_lifetime_number).publish_state(id(global_consumption_lifetime));
@@ -110,10 +117,10 @@ switch:
   - platform: template
     optimistic: true
     id: debug_mode
-    name: Debug mode
+    name: "Debug Mode"
     icon: "mdi:bug"
     entity_category: "diagnostic"
-    
+    disabled_by_default: true
 
 button:
   - platform: template
@@ -130,7 +137,6 @@ button:
     entity_category: "config"
     disabled_by_default: true
 
-
 text_sensor:
   - platform: template
     id: debug_json
@@ -138,10 +144,11 @@ text_sensor:
     icon: "mdi:code-json"
     entity_category: "diagnostic"
     update_interval: never
+    disabled_by_default: true
   
   - platform: template
     id: calibration_state
-    name: "Calibration State"
+    name: "Calibration Status"
     icon: "mdi:tune"
     entity_category: "diagnostic"
     update_interval: never
@@ -158,8 +165,10 @@ output:
 sensor:
   - &adc_common
     platform: adc
+    # don't do automatic updates: it interfers with the timing of the readings in the interval and script sections.
     update_interval: never
-    samples: 1
+    # samples uses an integer internally to do the avereging and therefore looses precision, 
+    # so we do the averaging with a sliding_window_moving_average filter instead.
     entity_category: "diagnostic"
     internal: true
     pin:
@@ -169,6 +178,10 @@ sensor:
     id: light_sensor_a_dark
     name: "Light Sensor A Dark"
     filters:
+      - clamp:
+          min_value: ${lower_bound}
+          max_value: ${upper_bound}
+          ignore_out_of_range: true
       - sliding_window_moving_average:
           window_size: ${window_size * samples_per_reading}
           send_every: ${samples_per_reading}
@@ -218,11 +231,8 @@ sensor:
     update_interval: never
     internal: true
     filters:
+      # skip inital readings to allow sensors to stabilize.
       - skip_initial: ${initialization_readings}
-      - clamp:
-          min_value: ${lower_bound}
-          max_value: ${upper_bound}
-          ignore_out_of_range: true
           
   - <<: *diff_common
     id: light_sensor_b_diff
@@ -234,8 +244,9 @@ sensor:
     name: "light_sensor_c_diff"
     lambda: return id(light_sensor_c_light).state - id(light_sensor_c_dark).state;
 
-  # liters
-  - platform: template
+  # Consumption sensors
+  - &consumption_common
+    platform: template
     name: "Lifetime Consumption"
     id: consumption_lifetime
     device_class: "water"
@@ -244,18 +255,21 @@ sensor:
     update_interval: never
     state_class: total_increasing
     
-
-  - platform: template
-    name: "Consumption since restart"
+  - <<: *consumption_common
     id: consumption_since_restart
-    device_class: "water"
-    unit_of_measurement: "L"
-    accuracy_decimals: 2
-    update_interval: never
-    state_class: total_increasing
+    name: "Consumption since restart"
+
+  - <<: *consumption_common
+    id: consumption_current
+    name: "Current Consumption"
+
+  - <<: *consumption_common
+    id: consumption_previous
+    name: "Previous Consumption"
 
   # Flow rate sensors
-  - platform: template
+  - &flow_rate_common
+    platform: template
     name: "Instant Flow Rate"
     id: flow_rate_now
     device_class: "volume_flow_rate"
@@ -264,40 +278,13 @@ sensor:
     update_interval: never
     state_class: measurement
 
-  - platform: template
-    name: "Current Flow Rate"
+  - <<: *flow_rate_common
     id: flow_rate_current
-    device_class: "volume_flow_rate"
-    unit_of_measurement: "L/min"
-    accuracy_decimals: 2
-    update_interval: never
-    state_class: measurement
+    name: "Current Flow Rate"
 
-  - platform: template
-    name: "Previous Flow Rate"
+  - <<: *flow_rate_common
     id: flow_rate_previous
-    device_class: "volume_flow_rate"
-    unit_of_measurement: "L/min"
-    accuracy_decimals: 2
-    update_interval: never
-    state_class: measurement
-
-  # Consumption sensors
-  - platform: template
-    name: "Current Consumption"
-    id: consumption_current
-    device_class: "water"
-    unit_of_measurement: "L"
-    accuracy_decimals: 2
-    update_interval: never
-
-  - platform: template
-    name: "Previous Consumption"
-    id: consumption_previous
-    device_class: "water"
-    unit_of_measurement: "L"
-    accuracy_decimals: 2
-    update_interval: never
+    name: "Previous Flow Rate"
 
 number:
   - platform: template
@@ -423,32 +410,39 @@ number:
     name: "Liters for Phase 5"
     
 globals:
+  # sensors use float values, but we want to be able to set the lifetime consumption with 
+  # higher precision, so we use a double for the global variable and publish it to the sensor 
+  # when it changes.
   - id: global_consumption_lifetime
     type: double
     restore_value: true
   
-# Triggers reading adc values and iterating algoritm.
-# Also publishes a debug JSON with all relevant values when debug mode is enabled.
+# Trgger readings at a fixed interval, and execute the update_readings script
 interval:
   - interval: ${sample_interval}
     startup_delay: ${sample_interval}
     then:
       - script.execute: update_readings
 
-# Reads the ADC states, computes the algorithm and updates the sensors. Also handles calibration and filtering.
+# Reads the ADC states, both dark and bright and processes the readings to calculate flow and consumption. 
+# The timing of the readings is important, so we do this in a script.
 script:
   - id: update_readings
     then:
+      # Switch on the sensor power and wait a bit for the sensors to stabilize before taking readings.
       - output.turn_on: sensor_power
       - delay: 20ms
+      # Take multiple readings in the dark that are averaged by the moving window.
       - repeat:
           count: ${samples_per_reading}
           then:
             - component.update: light_sensor_a_dark
             - component.update: light_sensor_b_dark
             - component.update: light_sensor_c_dark
+      # Turn on the led and wait a bit for the sensors to stabilize before taking readings.
       - output.turn_on: led
       - delay: 20ms
+      # Take multiple readings in the light that are averaged by the moving window.
       - repeat:
           count: ${samples_per_reading}
           then:
@@ -458,7 +452,9 @@ script:
             - component.update: light_sensor_b_diff
             - component.update: light_sensor_c_light
             - component.update: light_sensor_c_diff
+      # Turn off the led and sensor power.
       - output.turn_off: led
       - output.turn_off: sensor_power
+      # Process the readings to calculate flow and consumption, and update the sensors accordingly.
       - lambda: process_readings();
       

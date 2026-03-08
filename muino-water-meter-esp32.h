@@ -1,4 +1,13 @@
 #pragma once
+
+// Muino Water Meter ESP32 Code
+// This code is designed for an ESP32-based water meter sensor using light sensors to detect flow.
+// It includes calibration options, flow rate and consumption calculations, and a debug mode for troubleshooting.
+//
+// Written by:
+//  - Martijn van Wezel (@martijnvwezel)
+//  - Arjan Mels (@arjanmels)
+
 #include "esphome.h"
 
 // Get the name of the current calibration state for logging purposes
