@@ -13,28 +13,34 @@
 // Get the name of the current calibration state for logging purposes
 const char* get_current_calibration_state_name();
 
-// Process the sensor readings, update the calibration state, and calculate consumption and flow rate based on the detected patterns and fractions.
+// Process the sensor readings, update the calibration state, and calculate consumption and flow rate based on the detected patterns
+// and fractions.
 void process_readings();
 
 // Reset the calibration to the initial state.
 void reset_calibration_internal();
 
-// When the amount of phases changes, reset the calibration to the initial state to allow recalibration with the new number of phases.
+// When the amount of phases changes, reset the calibration to the initial state to allow recalibration with the new number of
+// phases.
 void nr_phases_changed();
 
 // Constants for calibration
 
-// Smoothing weight for min/max calibration, between 0 and 1. Higher values give more weight to new readings, lower values give more weight to historical values.
+// Smoothing weight for min/max calibration, between 0 and 1. Higher values give more weight to new readings, lower values give more
+// weight to historical values.
 constexpr float SENSOR_SMOOTHING_WEIGHT = 0.1f;
 // Hysteresis band for signal state changes, as a fraction of the range between min and max.
 constexpr float SENSOR_SMOOTHING_BAND = 0.1f;
 // Range for the duration match when calibrating fractions, as a fraction of the expected duration.
 constexpr float DURATION_MATCH_DEVIATION = 0.1f;
-// Smoothing weight for flow rate calculation, between 0 and 1. Higher values give more weight to new readings, lower values give more weight to historical values.
+// Smoothing weight for flow rate calculation, between 0 and 1. Higher values give more weight to new readings, lower values give
+// more weight to historical values.
 constexpr float FLOW_RATE_SMOOTHING_WEIGHT = 0.3f;
-// Smoothing weight for fraction calibration, between 0 and 1. Higher values give more weight to new readings, lower values give more weight to historical values.
+// Smoothing weight for fraction calibration, between 0 and 1. Higher values give more weight to new readings, lower values give
+// more weight to historical values.
 constexpr float FRACTION_SMOOTHING_WEIGHT = 0.3f;
-// Multiplier for expected phase duration during preliminary fraction calibration, to allow more time for calibration before patterns are fully known.
+// Multiplier for expected phase duration during preliminary fraction calibration, to allow more time for calibration before
+// patterns are fully known.
 constexpr float PRELIMINARY_EXPECTED_PHASE_DURATION_MULTIPLIER = 4.0f;
 
 // Constant for converting milliseconds to minutes.
@@ -72,6 +78,10 @@ static bool             all_extremes_known;
 static bool             all_patterns_known;
 static bool             all_fractions_known;
 static int              phases;
+
+static float scaled_a, scaled_b, scaled_c;
+static int   crossings;
+static int   pattern;
 
 /// Get the name of the current calibration state for logging purposes
 ///
@@ -149,7 +159,8 @@ inline int phase_idx(int i) {
 
 float get_fraction(int i) {
     decltype(&id(fraction_0)) fractions[] = {
-        &id(fraction_0), &id(fraction_1), &id(fraction_2), &id(fraction_3), &id(fraction_4), &id(fraction_5), &id(fraction_6), &id(fraction_7), &id(fraction_8), &id(fraction_9), &id(fraction_10), &id(fraction_11),
+        &id(fraction_0), &id(fraction_1), &id(fraction_2), &id(fraction_3), &id(fraction_4),  &id(fraction_5),
+        &id(fraction_6), &id(fraction_7), &id(fraction_8), &id(fraction_9), &id(fraction_10), &id(fraction_11),
     };
 
     return fractions[phase_idx(i)]->state;
@@ -157,7 +168,8 @@ float get_fraction(int i) {
 
 void set_fraction(int i, float value) {
     decltype(&id(fraction_0)) fractions[] = {
-        &id(fraction_0), &id(fraction_1), &id(fraction_2), &id(fraction_3), &id(fraction_4), &id(fraction_5), &id(fraction_6), &id(fraction_7), &id(fraction_8), &id(fraction_9), &id(fraction_10), &id(fraction_11),
+        &id(fraction_0), &id(fraction_1), &id(fraction_2), &id(fraction_3), &id(fraction_4),  &id(fraction_5),
+        &id(fraction_6), &id(fraction_7), &id(fraction_8), &id(fraction_9), &id(fraction_10), &id(fraction_11),
     };
 
     set_value(*fractions[phase_idx(i)], value);
@@ -165,7 +177,8 @@ void set_fraction(int i, float value) {
 
 int get_pattern(int i) {
     decltype(&id(pattern_0)) patterns[] = {
-        &id(pattern_0), &id(pattern_1), &id(pattern_2), &id(pattern_3), &id(pattern_4), &id(pattern_5), &id(pattern_6), &id(pattern_7), &id(pattern_8), &id(pattern_9), &id(pattern_10), &id(pattern_11),
+        &id(pattern_0), &id(pattern_1), &id(pattern_2), &id(pattern_3), &id(pattern_4),  &id(pattern_5),
+        &id(pattern_6), &id(pattern_7), &id(pattern_8), &id(pattern_9), &id(pattern_10), &id(pattern_11),
     };
 
     return static_cast<int>(patterns[phase_idx(i)]->state);
@@ -173,7 +186,8 @@ int get_pattern(int i) {
 
 void set_pattern(int i, int value) {
     decltype(&id(pattern_0)) patterns[] = {
-        &id(pattern_0), &id(pattern_1), &id(pattern_2), &id(pattern_3), &id(pattern_4), &id(pattern_5), &id(pattern_6), &id(pattern_7), &id(pattern_8), &id(pattern_9), &id(pattern_10), &id(pattern_11),
+        &id(pattern_0), &id(pattern_1), &id(pattern_2), &id(pattern_3), &id(pattern_4),  &id(pattern_5),
+        &id(pattern_6), &id(pattern_7), &id(pattern_8), &id(pattern_9), &id(pattern_10), &id(pattern_11),
     };
     set_value(*patterns[phase_idx(i)], value);
 }
@@ -193,13 +207,13 @@ void reset_partial_calibration() {
     flow_start_time              = 0;
     consumption_since_flow_start = 0.0f;
 
-    phases=MAX_PHASE_COUNT;
+    phases = MAX_PHASE_COUNT;
     for (int i = 0; i < MAX_PHASE_COUNT; ++i) {
         set_pattern(i, -1);
         set_fraction(i, -0.001f);
         phase_info[i] = {};
     }
-    phases=phase_idx(id(nr_phases).state);
+    phases = phase_idx(id(nr_phases).state);
 
     id(consumption_since_restart).publish_state(0);
     id(consumption_current).publish_state(0);
@@ -230,7 +244,8 @@ void nr_phases_changed() {
     reset_partial_calibration();
 };
 
-/// Update the state of a signal based on its current state and a new value, using a hysteresis band to prevent rapid state changes due to noise.
+/// Update the state of a signal based on its current state and a new value, using a hysteresis band to prevent rapid state changes
+/// due to noise.
 ///
 /// @param current The current state of the signal.
 /// @param val The new value to update the state with.
@@ -270,7 +285,8 @@ bool wait_until_api_ready() {
 
 /// Initialize the calibration flags based on the current sensor states, and update the calibration state accordingly.
 void initialize_calibration_flags() {
-    all_extremes_known  = id(min_a).state > 0.0f && id(max_a).state > 0.0f && id(min_b).state > 0.0f && id(max_b).state > 0.0f && id(min_c).state > 0.0f && id(max_c).state > 0.0f;
+    all_extremes_known = id(min_a).state > 0.0f && id(max_a).state > 0.0f && id(min_b).state > 0.0f && id(max_b).state > 0.0f &&
+                         id(min_c).state > 0.0f && id(max_c).state > 0.0f;
     all_patterns_known  = true;
     all_fractions_known = true;
 
@@ -279,7 +295,9 @@ void initialize_calibration_flags() {
         all_fractions_known = all_fractions_known && get_fraction(i) >= 0.0f;
     }
 
-    ESP_LOGD("log2csv", "all_extremes_known:%d all_patterns_known:%d all_fractions_known:%d", all_extremes_known, all_patterns_known, all_fractions_known);
+    ESP_LOGD(
+        "log2csv", "all_extremes_known:%d all_patterns_known:%d all_fractions_known:%d", all_extremes_known, all_patterns_known,
+        all_fractions_known);
     update_calibration_state(all_extremes_known ? PRELIMINARY_RANGE : UNCALIBRATED);
 }
 
@@ -296,9 +314,12 @@ void calibrate_range(float a, float b, float c) {
     id(max_b).state = max_average(id(min_b).state, id(max_b).state, b, SENSOR_SMOOTHING_WEIGHT);
     id(max_c).state = max_average(id(min_c).state, id(max_c).state, c, SENSOR_SMOOTHING_WEIGHT);
 
-    ESP_LOGD("log2csv", "a_min:%f b_min:%f c_min:%f a_max:%f b_max:%f c_max:%f", id(min_a).state, id(min_b).state, id(min_c).state, id(max_a).state, id(max_b).state, id(max_c).state);
+    ESP_LOGD(
+        "log2csv", "a_min:%f b_min:%f c_min:%f a_max:%f b_max:%f c_max:%f", id(min_a).state, id(min_b).state, id(min_c).state,
+        id(max_a).state, id(max_b).state, id(max_c).state);
 
-    if (id(max_a).state - id(min_a).state <= MIN_RANGE || id(max_b).state - id(min_b).state <= MIN_RANGE || id(max_c).state - id(min_c).state <= MIN_RANGE) {
+    if (id(max_a).state - id(min_a).state <= MIN_RANGE || id(max_b).state - id(min_b).state <= MIN_RANGE ||
+        id(max_c).state - id(min_c).state <= MIN_RANGE) {
         return;
     }
 
@@ -335,7 +356,8 @@ int pattern_from_states(SignalState sa, SignalState sb, SignalState sc) {
     if (sa == UNKNOWN || sb == UNKNOWN || sc == UNKNOWN) {
         return -1;
     }
-    return (sa == HIGH || sa == RISING ? PATTERN_BIT_A : 0) | (sb == HIGH || sb == RISING ? PATTERN_BIT_B : 0) | (sc == HIGH || sc == RISING ? PATTERN_BIT_C : 0);
+    return (sa == HIGH || sa == RISING ? PATTERN_BIT_A : 0) | (sb == HIGH || sb == RISING ? PATTERN_BIT_B : 0) |
+           (sc == HIGH || sc == RISING ? PATTERN_BIT_C : 0);
 }
 
 /// Count the number of crossings between two patterns.
@@ -388,7 +410,8 @@ void rotate_phase_tables_left(int shift) {
     }
 }
 
-/// Update the pattern calibration based on the known patterns, and rotate the phase tables if necessary to align with the detected patterns.
+/// Update the pattern calibration based on the known patterns, and rotate the phase tables if necessary to align with the detected
+/// patterns.
 void update_pattern_calibration() {
     bool missing_pattern = false;
     for (int i = 0; i < phases; ++i) {
@@ -445,9 +468,14 @@ void align_edge_phase_to_pattern(int pattern, int prev_pattern) {
     }
 
     if (pattern != get_pattern(edge_phase)) {
-        ESP_LOGE("phase_detection", "Could not update phase from %d, because could not detect pattern %u. Redo calibration!", old_edge_phase, pattern);
+        ESP_LOGE(
+            "phase_detection", "Could not update phase from %d, because could not detect pattern %u. Redo calibration!",
+            old_edge_phase, pattern);
     } else {
-        ESP_LOGW("phase_detection", "Updated phase from %d to %d based on detected pattern (%u). If this occurs often, consider recalibrating.", old_edge_phase, edge_phase, pattern);
+        ESP_LOGW(
+            "phase_detection",
+            "Updated phase from %d to %d based on detected pattern (%u). If this occurs often, consider recalibrating.",
+            old_edge_phase, edge_phase, pattern);
     }
 }
 
@@ -466,12 +494,19 @@ void update_fraction_calibration(uint32_t now) {
     const uint32_t pdur      = pi.millis - pi.prev_millis;
     const uint32_t prev_cdur = ci.prev_millis - ci.prev_prev_millis;
 
-    if (ci.prev_prev_millis > 0 && pi.prev_millis > 0 && cdur >= pdur * (1.0f - DURATION_MATCH_DEVIATION) && cdur <= pdur * (1.0f + DURATION_MATCH_DEVIATION) && cdur >= prev_cdur * (1.0f - DURATION_MATCH_DEVIATION) && cdur <= prev_cdur * (1.0f + DURATION_MATCH_DEVIATION)) {
+    if (ci.prev_prev_millis > 0 && pi.prev_millis > 0 && cdur >= pdur * (1.0f - DURATION_MATCH_DEVIATION) &&
+        cdur <= pdur * (1.0f + DURATION_MATCH_DEVIATION) && cdur >= prev_cdur * (1.0f - DURATION_MATCH_DEVIATION) &&
+        cdur <= prev_cdur * (1.0f + DURATION_MATCH_DEVIATION)) {
         const float new_fraction = LITERS_PER_ROTATION * (ci.millis - pi.millis) / cdur;
-        set_fraction(edge_phase, get_fraction(edge_phase) < 0 ? new_fraction : ((1.0f - FRACTION_SMOOTHING_WEIGHT) * get_fraction(edge_phase) + FRACTION_SMOOTHING_WEIGHT * new_fraction));
+        set_fraction(
+            edge_phase, get_fraction(edge_phase) < 0 ? new_fraction
+                                                     : ((1.0f - FRACTION_SMOOTHING_WEIGHT) * get_fraction(edge_phase) +
+                                                        FRACTION_SMOOTHING_WEIGHT * new_fraction));
         ci.calibration_count++;
 
-        ESP_LOGD("log2csv", "duration:%d prev_duration:%d fraction:%f calibration_count:%d", cdur, pdur, get_fraction(edge_phase), ci.calibration_count);
+        ESP_LOGD(
+            "log2csv", "duration:%d prev_duration:%d fraction:%f calibration_count:%d", cdur, pdur, get_fraction(edge_phase),
+            ci.calibration_count);
     }
 
     bool preliminarily_calibrated = true;
@@ -499,7 +534,10 @@ void update_fraction_calibration(uint32_t now) {
     }
 
     for (int i = 0; i < phases; ++i) {
-        ESP_LOGD("log2csv", "pattern%d:%u fraction%d:%f calibration_count%d:%d millis%d:%u prev_millis%d:%u dur%d:%u", i, get_pattern(i), i, get_fraction(i), i, get_phase_info(i).calibration_count, i, get_phase_info(i).millis, i, get_phase_info(i).prev_millis, i, get_phase_info(i).millis - get_phase_info(i).prev_millis);
+        ESP_LOGD(
+            "log2csv", "pattern%d:%u fraction%d:%f calibration_count%d:%d millis%d:%u prev_millis%d:%u dur%d:%u", i, get_pattern(i),
+            i, get_fraction(i), i, get_phase_info(i).calibration_count, i, get_phase_info(i).millis, i,
+            get_phase_info(i).prev_millis, i, get_phase_info(i).millis - get_phase_info(i).prev_millis);
     }
 }
 
@@ -522,7 +560,11 @@ void calculate_consumption_and_flow(uint32_t now) {
     if (flow_start_time > 0) {
         if (liters_for_phase > 0.0f) {
             flow_rate = liters_for_phase / (now - last_phase_change) * MILLIS_IN_MINUTE; // L/min
-            id(flow_rate_now).publish_state(id(flow_rate_now).state <= 0.0f ? flow_rate : ((1.0f - FLOW_RATE_SMOOTHING_WEIGHT) * id(flow_rate_now).state + FLOW_RATE_SMOOTHING_WEIGHT * flow_rate));
+            id(flow_rate_now)
+                .publish_state(
+                    id(flow_rate_now).state <= 0.0f
+                        ? flow_rate
+                        : ((1.0f - FLOW_RATE_SMOOTHING_WEIGHT) * id(flow_rate_now).state + FLOW_RATE_SMOOTHING_WEIGHT * flow_rate));
         }
 
         id(flow_rate_current).publish_state(consumption_since_flow_start / (now - flow_start_time) * MILLIS_IN_MINUTE); // L/min
@@ -534,19 +576,28 @@ void calculate_consumption_and_flow(uint32_t now) {
     }
 
     if (liters_for_phase > 0.0f) {
-        const float next_liters_for_phase = calibrated < PRELIMINARY_FRACTIONS ? LITERS_PER_ROTATION / phases : get_fraction(edge_phase + 1);
-        expected_phase_duration           = (now - last_phase_change) / liters_for_phase * next_liters_for_phase;
+        const float next_liters_for_phase =
+            calibrated < PRELIMINARY_FRACTIONS ? LITERS_PER_ROTATION / phases : get_fraction(edge_phase + 1);
+        expected_phase_duration = (now - last_phase_change) / liters_for_phase * next_liters_for_phase;
 
         if (calibrated < PRELIMINARY_FRACTIONS) {
             expected_phase_duration *= PRELIMINARY_EXPECTED_PHASE_DURATION_MULTIPLIER;
         }
-        ESP_LOGD("log2csv", "expected_phase_duration:%d liters_for_phase:%f next_liters_for_phase:%f", expected_phase_duration, liters_for_phase, next_liters_for_phase);
+        ESP_LOGD(
+            "log2csv", "expected_phase_duration:%d liters_for_phase:%f next_liters_for_phase:%f", expected_phase_duration,
+            liters_for_phase, next_liters_for_phase);
     }
 
     last_phase_change = now;
 
-    ESP_LOGD("log2csv", "last_phase_change:%d liters_for_phase:%f flow_rate_inst:%f", last_phase_change, liters_for_phase, flow_rate);
-    ESP_LOGD("log2csv", "consumption_lifetime:%f consumption_since_restart:%f consumption_current:%f consumption_previous:%f flow_rate_now:%f flow_rate_current:%f flow_rate_previous:%f", id(global_consumption_lifetime), id(consumption_since_restart).state, id(consumption_current).state, id(consumption_previous).state, id(flow_rate_now).state, id(flow_rate_current).state, id(flow_rate_previous).state);
+    ESP_LOGD(
+        "log2csv", "last_phase_change:%d liters_for_phase:%f flow_rate_inst:%f", last_phase_change, liters_for_phase, flow_rate);
+    ESP_LOGD(
+        "log2csv",
+        "consumption_lifetime:%f consumption_since_restart:%f consumption_current:%f consumption_previous:%f flow_rate_now:%f "
+        "flow_rate_current:%f flow_rate_previous:%f",
+        id(global_consumption_lifetime), id(consumption_since_restart).state, id(consumption_current).state,
+        id(consumption_previous).state, id(flow_rate_now).state, id(flow_rate_current).state, id(flow_rate_previous).state);
 }
 
 /// Reset the flow if last edge was too long ago and there is currently a flow.
@@ -578,7 +629,12 @@ void maybe_reset_flow(uint32_t now) {
     consumption_since_flow_start = 0.0f;
 
     ESP_LOGD("log2csv", "flow_reset:1");
-    ESP_LOGD("log2csv", "consumption_lifetime:%f consumption_since_restart:%f consumption_current:%f consumption_previous:%f flow_rate_now:%f flow_rate_current:%f flow_rate_previous:%f", id(global_consumption_lifetime), id(consumption_since_restart).state, id(consumption_current).state, id(consumption_previous).state, id(flow_rate_now).state, id(flow_rate_current).state, id(flow_rate_previous).state);
+    ESP_LOGD(
+        "log2csv",
+        "consumption_lifetime:%f consumption_since_restart:%f consumption_current:%f consumption_previous:%f flow_rate_now:%f "
+        "flow_rate_current:%f flow_rate_previous:%f",
+        id(global_consumption_lifetime), id(consumption_since_restart).state, id(consumption_current).state,
+        id(consumption_previous).state, id(flow_rate_now).state, id(flow_rate_current).state, id(flow_rate_previous).state);
 }
 
 /// Update the pattern and count the number of crossings.
@@ -654,22 +710,31 @@ void publish_debug_json() {
     snprintf(
         json, sizeof(json),
         "{"
-        "\"time\":%d,"
-        "\"al\":%.3f,\"bl\":%.3f,\"cl\":%.3f,"
-        "\"ad\":%.3f,\"bd\":%.3f,\"cd\":%.3f,"
-        "\"ami\":%.3f,\"bmi\":%.3f,\"cmi\":%.3f,"
-        "\"ama\":%.3f,\"bma\":%.3f,\"cma\":%.3f,"
-        "\"phs\":%d,"
-        "\"tot\":%.2f,\"res\":%.2f,\"cur\":%.2f,\"prv\":%.2f,"
-        "\"flw_cur\":%.2f,\"flw_prv\":%.2f"
+        "tim:%lu,"
+        "al:%.3f,bl:%.3f,cl:%.3f,"
+        "ad:%.3f,bd:%.3f,cd:%.3f,"
+        "ami:%.3f,bmi:%.3f,cmi:%.3f,"
+        "ama:%.3f,bma:%.3f,cma:%.3f,"
+        "as:%.3f,bs:%.3f,cs:%.3f,"
+        "ah:%d,bh:%d,ch:%d,"
+        "pat:%d,"
+        "crs:%d,"
+        "phs:%d,"
+        "cal:%d,"
+        "res:%.2f,cur:%.2f,"
+        "fcur:%.2f,prv:%.2f,fprv:%.2f"
         "}",
-        millis(), id(light_sensor_a_light).state, id(light_sensor_b_light).state, id(light_sensor_c_light).state, id(light_sensor_a_dark).state, id(light_sensor_b_dark).state, id(light_sensor_c_dark).state, id(min_a).state, id(min_b).state, id(min_c).state, id(max_a).state, id(max_b).state, id(max_c).state, edge_phase, id(global_consumption_lifetime), id(consumption_since_restart).state, id(consumption_current).state, id(consumption_previous).state, id(flow_rate_current).state, id(flow_rate_previous).state);
-
+        static_cast<unsigned long>(millis()), id(light_sensor_a_light).state, id(light_sensor_b_light).state,
+        id(light_sensor_c_light).state, id(light_sensor_a_dark).state, id(light_sensor_b_dark).state, id(light_sensor_c_dark).state,
+        id(min_a).state, id(min_b).state, id(min_c).state, id(max_a).state, id(max_b).state, id(max_c).state, scaled_a, scaled_b,
+        scaled_c, (int)ah, (int)bh, (int)ch, pattern, crossings, edge_phase, calibrated, id(consumption_since_restart).state,
+        id(consumption_current).state, id(flow_rate_current).state, id(consumption_previous).state, id(flow_rate_previous).state);
     ESP_LOGD("debug_json", "Publishing debug json: %s", json);
     id(debug_json).publish_state(json);
 }
 
-/// Process the sensor readings, update the calibration state, and calculate consumption and flow rate based on the detected patterns and fractions.
+/// Process the sensor readings, update the calibration state, and calculate consumption and flow rate based on the detected
+/// patterns and fractions.
 void process_readings() {
     if (!wait_until_api_ready()) {
         return;
@@ -683,7 +748,10 @@ void process_readings() {
     float b = id(light_sensor_b_diff).state;
     float c = id(light_sensor_c_diff).state;
 
-    ESP_LOGD("log2csv", "al:%f bl:%f cl:%f ad:%f bd:%f cd:%f a:%f b:%f c:%f now:%d", id(light_sensor_a_light).state, id(light_sensor_b_light).state, id(light_sensor_c_light).state, id(light_sensor_a_dark).state, id(light_sensor_b_dark).state, id(light_sensor_c_dark).state, a, b, c, now);
+    ESP_LOGD(
+        "log2csv", "al:%f bl:%f cl:%f ad:%f bd:%f cd:%f a:%f b:%f c:%f now:%d", id(light_sensor_a_light).state,
+        id(light_sensor_b_light).state, id(light_sensor_c_light).state, id(light_sensor_a_dark).state,
+        id(light_sensor_b_dark).state, id(light_sensor_c_dark).state, a, b, c, now);
 
     if (isnan(a) || isnan(b) || isnan(c)) {
         ESP_LOGD("log2csv", "Skipping reading due to NaN value(s): a:%f b:%f c:%f", a, b, c);
@@ -705,15 +773,15 @@ void process_readings() {
     }
 
     // normalize to -1...1 based on min/max
-    a = 2.0f * (a - id(min_a).state) / (id(max_a).state - id(min_a).state) - 1.0f;
-    b = 2.0f * (b - id(min_b).state) / (id(max_b).state - id(min_b).state) - 1.0f;
-    c = 2.0f * (c - id(min_c).state) / (id(max_c).state - id(min_c).state) - 1.0f;
+    scaled_a = a = 2.0f * (a - id(min_a).state) / (id(max_a).state - id(min_a).state) - 1.0f;
+    scaled_b = b = 2.0f * (b - id(min_b).state) / (id(max_b).state - id(min_b).state) - 1.0f;
+    scaled_c = c = 2.0f * (c - id(min_c).state) / (id(max_c).state - id(min_c).state) - 1.0f;
 
     ESP_LOGD("log2csv", "scaled_a:%f scaled_b:%f scaled_c:%f", a, b, c);
 
     // Update the pattern based on the current signal states and count the number of crossings that occurred since the last reading.
-    int pattern, prev_pattern;
-    int crossings = update_pattern_and_count_crossings(a, b, c, pattern, prev_pattern);
+    int prev_pattern;
+    crossings = update_pattern_and_count_crossings(a, b, c, pattern, prev_pattern);
     if (crossings < 0) {
         publish_debug_json();
         return;
