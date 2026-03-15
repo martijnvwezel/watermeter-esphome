@@ -1,214 +1,162 @@
-
+# Muino Water Meter ESP32 Configuration
+# This configuration is designed for an ESP32-based water meter sensor using light sensors to detect flow.
+# It includes calibration options, flow rate and consumption calculations, and a debug mode for troubleshooting.
+#
+# Written by:
+#  - Martijn van Wezel (@martijnvwezel)
+#  - Arjan Mels (@arjanmels)
 
 # These substitutions allow the end user to override certain values
 substitutions:
-  name: "muino-water-meter"
+  # Interval between sensor readings
+  sample_interval: 100ms
+  # Number of samples to take for each reading
+  samples_per_reading: 10
+  # Number of initial readings to discard for stabilization
+  initialization_readings: 20
+  # Window size for the moving averaging over the readings
+  window_size: 3
 
+  # These bounds are used to filter out unrealistic readings, adjust as needed based on your sensor
+  lower_bound: 0.001
+  upper_bound: 3.3
+  
+  # Minimum required range between min and max for calibration to be accepted
+  min_range: 0.005
+  
+  # Hysteresis band for state changes in the normalized signales (so between -1 and +1)
+  hysteresis_band: 0.5
+  
+  # If flow drops to less than this fraction, assume flow has ended (or a new flow level has started).
+  reset_fraction: 0.5
+  # Maximum reset duration in milliseconds
+  max_reset_duration: 120000
+
+  # Liters per full rotation
+  liters_per_rotation: 1.0
+  # Amount of liters corresponding to the min/max calibration phase
+  calibration_liters: 2.0
+
+  # Number of calibration updates to perform for the fraction values after detecting a new phase, before considering the fraction calibrated. 
+  # The total amount of water needed for this calibration is ~ calibration_liters + 2 + calibration_fraction_count*liters_per_rotation
+  calibration_fraction_count: 3
+  
+  # Whether to wait for an API connection before processing readings. This can be useful for debugging to ensure you see all logs from the start of the process.
+  wait_for_api_connection: false
+  
+  # Maximum number of phases (should be multiple of 6, and at least as high as the number of phases in your meter, e.g. 6 for a standard meter, 12 for a meter with two bright fields on the disk)
+  max_phase_count: 12
+  
 esphome:
-  name: "${name}"
-  # Automatically add the mac address to the name
-  # so you can use a single firmware for all devices
+  name: "muino-water-meter"
+  friendly_name: "Muino Water Meter"
   name_add_mac_suffix: true
-  platformio_options:
-    board_build.flash_mode: "dio"
 
-  # This will allow for (future) project identification,
-  # configuration and updates.
-  # project:
-  #   name: esphome-muino-water-meter
-  #   version: "3.0.4"
+  # This will allow for (future) project identification, configuration and updates.
+  project:
+    name: esphome.muino-water-meter
+    version: "5.0.1"
+    
+  platformio_options:
+    build_flags:
+      - -D MIN_RANGE=${min_range}
+      - -D HYSTERESIS_BAND=${hysteresis_band}
+      - -D RESET_FRACTION=${reset_fraction}
+      - -D MAX_RESET_DURATION=${max_reset_duration}
+      - -D LITERS_PER_ROTATION=${liters_per_rotation}
+      - -D CALIBRATION_LITERS=${calibration_liters}
+      - -D CALIBRATION_FRACTION_COUNT=${calibration_fraction_count}
+      - -D WAIT_FOR_API_CONNECTION=${1 if wait_for_api_connection else 0}
+      - -D MAX_PHASE_COUNT=${max_phase_count}
+    
+  includes:
+    - muino-water-meter-esp32.h
+
+  on_boot:
+    priority: -10
+    then:
+      # Initialize the global variable for lifetime consumption and sensor values to defaults.
+      - lambda: |-
+          id(consumption_lifetime).publish_state(id(global_consumption_lifetime));
+          id(consumption_lifetime_number).publish_state(id(global_consumption_lifetime));
+          id(consumption_since_restart).publish_state(0.0);
+          id(flow_rate_current).publish_state(0.0);
+          id(flow_rate_previous).publish_state(0.0);
+          id(flow_rate_now).publish_state(0.0);
+          id(consumption_current).publish_state(0.0);
+          id(consumption_previous).publish_state(0.0);
+          id(calibration_state).update();
+          id(debug_json).publish_state("");
+
+# This should point to the public location of this yaml file.
+dashboard_import:
+  package_import_url: github://martijnvwezel/watermeter-esphome/muino-water-meter-esp32.yaml@main
 
 esp32:
   board: seeed_xiao_esp32c3
   framework:
     type: esp-idf
 
-# Triggers reading adc values and iterating algoritm
-interval:
-  - interval: 100ms
-    then:
-      - output.turn_on: sensor_power
-      - component.update: light_sensor_a_dark
-      - if:
-          condition:
-            lambda: |-
-              return id(fastupdate).state; // If fastupdate is on, update immediately
-          then:
-            - lambda: |-
-                if (id(spindel_normal).state) {
-                  // Normal meter: symmetric 180° pattern
-                  id(last_reported_liters__mili) = (int)(1000*(id(liters)+id(phase)/6.0));
-                } else {
-                  // 120° meter: asymmetric pattern - 120° white (2 phases), 240° dark (4 phases)
-                  float phase_fraction;
-                  if (id(phase) < 2) {
-                    // In white section (120°): phases 0-1 = 0.0 to 0.333 liters
-                    phase_fraction = id(phase) / 6.0;
-                  } else {
-                    // In dark section (240°): phases 2-5 = 0.333 to 1.0 liters
-                    phase_fraction = 0.333 + ((id(phase) - 2) * 0.667 / 4.0);
-                  }
-                  id(last_reported_liters__mili) = (int)(1000*(id(liters) + phase_fraction));
-                }
-                id(last_reported_liters) = id(liters);
-                id(last_water_flow) = millis();
-            - if:
-                condition:
-                  lambda: |-
-                    return id(debugmodus).state;
-                then:
-                  - lambda: |-
-                      char json[256];
-                      int flow_cur = (int)(id(flow_rate_current) * 1);
-                      int flow_last = (int)(id(flow_rate_last) * 1);
-                      int cons_cur = (int)(id(current_consumption) * 1);
-                      int cons_last = (int)(id(previous_consumption) * 1);
-                      snprintf(
-                        json, sizeof(json),
-                        "{"
-                          "\"liters\":%d,\"phase\":%d,"
-                          "\"last_L\":%d,\"last_mL\":%d,"
-                          "\"aa\":%d,\"bb\":%d,\"cc\":%d,"
-                          "\"max_a\":%d,\"max_b\":%d,\"max_c\":%d,"
-                          "\"min_a\":%d,\"min_b\":%d,\"min_c\":%d,"
-                          "\"flow_cur\":%d,\"flow_last\":%d,"
-                          "\"cons_cur\":%d,\"cons_last\":%d"
-                        "}"
-                        ,id(liters), id(phase)
-                        ,id(last_reported_liters)
-                        ,id(last_reported_liters__mili)
+# Make sure logging is correct for solving platform IO bugs
+logger:
+  hardware_uart: USB_SERIAL_JTAG
+  level: INFO
 
-                        ,id(aa), id(bb), id(cc)
-                        ,id(max_a), id(max_b), id(max_c)
-                        ,id(min_a), id(min_b), id(min_c)
+# Enable Home Assistant API
+api:
 
-                        ,flow_cur, flow_last
-                        ,cons_cur, cons_last
-                      );
+# OTA is required for Over-the-Air updating
+ota:
+  platform: esphome
 
-                      ESP_LOGD("debug_json", "Publishing debug json: %s", json);
-                      id(debug_json).publish_state(json);
+# Set up a wifi access point using the device name above
+wifi:
+  ap:
 
-          else:
-            - lambda: |-
-                // If fastupdate is off, only update every 60 seconds (configurable)
-                if ((millis() - id(last_water_flow)) >= id(update_interval_idle) * 1000) {
-                  if (id(spindel_normal).state) {
-                    // Normal meter: symmetric 180° pattern
-                    id(last_reported_liters__mili) = (int)(1000*(id(liters)+id(phase)/6.0));
-                  } else {
-                    // 120° meter: asymmetric pattern - 120° white (2 phases), 240° dark (4 phases)
-                    float phase_fraction;
-                    if (id(phase) < 2) {
-                      // In white section (120°): phases 0-1 = 0.0 to 0.333 liters
-                      phase_fraction = id(phase) / 6.0;
-                    } else {
-                      // In dark section (240°): phases 2-5 = 0.333 to 1.0 liters
-                      phase_fraction = 0.333 + ((id(phase) - 2) * 0.667 / 4.0);
-                    }
-                    id(last_reported_liters__mili) = (int)(1000*(id(liters) + phase_fraction));
-                  }
-                  id(last_reported_liters) = id(liters);
-                  id(last_water_flow) = millis();
+# In combination with the `ap` this allows the user to provision wifi credentials to the device.
+captive_portal:
 
-                  // Force update sensors so it gets new values
-                  id(current_consumption_sensor).publish_state(id(current_consumption));
-                  id(previous_consumption_sensor).publish_state(id(previous_consumption));
-                  id(flow_rate_current_sensor).publish_state(id(flow_rate_current));
-                  id(flow_rate_last_sensor).publish_state(id(flow_rate_last));
-
-                }
-
-  # - interval: 10s # Check every 10 seconds to reduce load, adjust as needed
-  #   then:
-  #     - lambda: |-
-  # - interval: 1s
-  #   then:
-  #     # - component.update: report_liters
-  #     # - component.update: report_liters_rounded
-  #     - logger.log:
-  #         level: INFO
-  #         tag: time
-  #         format: "o:%d"
-  #         args: [ 'id(last_water_flow)']
-  # #     - logger.log:
-  #         level: INFO
-  #         tag: max_average
-  #         format: "a:%d b:%d c:%d"
-  #         args: [ 'id(max_a)', 'id(max_b)' , 'id(max_c)']
-  #     - logger.log:
-  #         level: INFO
-  #         tag: min_average
-  #         format: "a:%d b:%d c:%d"
-  #         args: [ 'id(min_a)', 'id(min_b)' , 'id(min_c)']
-
-# Toggle switch
+# Define entities
 switch:
-  - platform: template 
-    optimistic: true
-    id: fastupdate
-    name: Speed mode
-    icon: "mdi:emoticon-cool-outline"
-
   - platform: template
     optimistic: true
-    id: debugmodus
-    name: Debug mode
+    id: debug_mode
+    name: "Debug Mode"
     icon: "mdi:bug"
-    turn_on_action:
-      - switch.turn_on: fastupdate
-    turn_off_action:
-      - switch.turn_off: fastupdate
-
-  - platform: template
-    optimistic: true
-    id: spindel_normal
-    name: "Spindel 180=on 120=off"
-    icon: "mdi:rotate-3d-variant"
-    restore_mode: RESTORE_DEFAULT_ON
-
-  # for manual calibration or auto
-  - platform: template
-    id: calibration_mode
-    name: "Manual Calibration"
-    icon: "mdi:tune-vertical"
-    lambda: |-
-      return id(manual_calibration);
-    turn_on_action:
-      - lambda: |-
-          id(manual_calibration) = true;
-    turn_off_action:
-      - lambda: |-
-          id(manual_calibration) = false;
+    entity_category: "diagnostic"
+    disabled_by_default: true
 
 button:
   - platform: template
+    id: reset_calibration
     name: "Reset Calibration"
     icon: "mdi:restart"
+    entity_category: "config"
+    disabled_by_default: true
     on_press:
-      - lambda: |-
-          int min = id(lower_bound);
-          int a = id(light_sensor_a_light).state - id(light_sensor_a_dark).state;
-          if (a < min) a = id(light_sensor_a_light).state;
-          int b = id(light_sensor_b_light).state - id(light_sensor_b_dark).state;
-          if (b < min) b = id(light_sensor_b_light).state;
-          int c = id(light_sensor_c_light).state - id(light_sensor_c_dark).state;
-          if (c < min) c = id(light_sensor_c_light).state;
+      - lambda: reset_calibration_internal();
 
-          id(liters) = 0;
-          id(min_a)= a;
-          id(min_b)= b;
-          id(min_c)= c;
-          id(max_a)= 0;
-          id(max_b)= 0;
-          id(max_c)= 0;
+  - platform: restart
+    name: "Restart"
+    entity_category: "config"
+    disabled_by_default: true
 
 text_sensor:
   - platform: template
-    name: "debug_JSON"
     id: debug_json
-    # No automatic interval, we'll update manually
+    name: "Debug JSON"
+    icon: "mdi:code-json"
+    entity_category: "diagnostic"
     update_interval: never
+    disabled_by_default: true
+  
+  - platform: template
+    id: calibration_state
+    name: "Calibration Status"
+    icon: "mdi:tune"
+    entity_category: "diagnostic"
+    update_interval: never
+    lambda: return std::string(get_current_calibration_state_name());
 
 output:
   - platform: gpio
@@ -219,698 +167,338 @@ output:
     id: sensor_power
 
 sensor:
-  - platform: adc
-    pin: 
+  - &adc_common
+    platform: adc
+    # don't do automatic updates: it interfers with the timing of the readings in the interval and script sections.
+    update_interval: never
+    # samples uses an integer internally to do the avereging and therefore looses precision, 
+    # so we do the averaging with a sliding_window_moving_average filter instead.
+    entity_category: "diagnostic"
+    internal: true
+    pin:
       number: 2
       allow_other_uses: true
       ignore_strapping_warning: true
-    name: "light_sensor_a_dark"
     id: light_sensor_a_dark
-    raw: true
-    internal: true
-    on_value:
-      then:
-        component.update: light_sensor_b_dark
-  - platform: adc
-    pin: 
+    name: "Light Sensor A Dark"
+    filters:
+      - clamp:
+          min_value: ${lower_bound}
+          max_value: ${upper_bound}
+          ignore_out_of_range: true
+      - sliding_window_moving_average:
+          window_size: ${window_size * samples_per_reading}
+          send_every: ${samples_per_reading}
+          send_first_at: ${samples_per_reading}
+
+  - <<: *adc_common
+    pin:
       number: 3
       allow_other_uses: true
     id: light_sensor_b_dark
-    name: "light_sensor_b_dark"
-    raw: true
-    internal: true
-    on_value:
-      then:
-        component.update: light_sensor_c_dark
-    
-  - platform: adc
-    pin: 
+    name: "Light Sensor B Dark"
+  - <<: *adc_common
+    pin:
       number: 4
       allow_other_uses: true
     id: light_sensor_c_dark
-    name: "light_sensor_c_dark"
-    raw: true
-    internal: true
-    on_value:
-      then:
-        - output.turn_on: led
-        - delay: 50ms
-        - component.update: light_sensor_a_light
-
-  - platform: adc
-    pin: 
+    name: "Light Sensor C Dark"
+  - <<: *adc_common
+    pin:
       number: 2
       allow_other_uses: true
-
       ignore_strapping_warning: true
-    name: "light_sensor_a_light"
     id: light_sensor_a_light
-    raw: true
-    internal: true
-    on_value:
-      then:
-        component.update: light_sensor_b_light
-
-  - platform: adc
-    pin: 
+    name: "Light Sensor A Light"
+  - <<: *adc_common
+    pin:
       number: 3
       allow_other_uses: true
     id: light_sensor_b_light
-    name: "light_sensor_b_light"
-    raw: true
-    internal: true
-    on_value:
-      then:
-        - component.update: light_sensor_c_light
-    
-  - platform: adc
-    pin: 
+    name: "Light Sensor B Light"
+  - <<: *adc_common
+    pin:
       number: 4
       allow_other_uses: true
     id: light_sensor_c_light
-    name: "light_sensor_c_light"
-    raw: true
+    name: "Light Sensor C Light"
+   
+  - &diff_common
+    platform: template
+    name: "light_sensor_a_diff"
+    id: light_sensor_a_diff
+    lambda: return id(light_sensor_a_light).state - id(light_sensor_a_dark).state;
+    update_interval: never
     internal: true
-    on_value:
-      then:
-        - output.turn_off: led
-        #- output.turn_off: sensor_power
-        - component.update: phase_coarse
-  # keep track last time updated
-
-# dark sensor values
-  - platform: template
-    name: "sensa_dark"
-    force_update: false
-    internal: true
-    id: ad
-    device_class: "ILLUMINANCE"
-    unit_of_measurement: "lx"
-    accuracy_decimals: 0 
-    lambda: |-
-      return id(light_sensor_a_dark).state;
-
-  - platform: template
-    name: "sensb_dark"
-    id: bd
-    force_update: false
-    internal: true
-    device_class: "ILLUMINANCE"
-    unit_of_measurement: "lx"
-    accuracy_decimals: 0 
-    lambda: |-
-      return id(light_sensor_b_dark).state;
-
-  - platform: template
-    name: "sensc_dark"
-    force_update: false
-    internal: true
-    id: cd
-    device_class: "ILLUMINANCE"
-    unit_of_measurement: "lx"
-    accuracy_decimals: 0 
-    lambda: |-
-      return id(light_sensor_c_dark).state;
-
-# sensor values
-  - platform: template
-    name: "sensa"
-    force_update: false
-    internal: true
-    id: al
-    device_class: "ILLUMINANCE"
-    unit_of_measurement: "lx"
-    accuracy_decimals: 0 
-    lambda: |-
-      return id(light_sensor_a_light).state;
-
-  - platform: template
-    name: "sensb"
-    force_update: false
-    internal: true
-    id: bl
-    device_class: "ILLUMINANCE"
-    unit_of_measurement: "lx"
-    accuracy_decimals: 0 
-    lambda: |-
-      return id(light_sensor_b_light).state;
-
-  - platform: template
-    name: "sensc"
-    force_update: false
-    internal: true
-    id: cl
-    device_class: "ILLUMINANCE"
-    unit_of_measurement: "lx"
-    accuracy_decimals: 0 
-    lambda: |-
-      return id(light_sensor_c_light).state;
-
-
-# substracted values
-  - platform: template
-    name: "sensa_sub"
-    id: as
-    force_update: false
-    internal: true
-    device_class: "ILLUMINANCE"
-    unit_of_measurement: "lx"
-    accuracy_decimals: 0 
-    lambda: |-
-    
-      return id(aa);
-
-  - platform: template
-    name: "sensb_sub"
-    force_update: false
-    internal: true
-    id: bs
-    device_class: "ILLUMINANCE"
-    unit_of_measurement: "lx"
-    accuracy_decimals: 0 
-    lambda: |-
-      return id(bb);
-
-  - platform: template
-    name: "sensc_sub"
-    force_update: false
-    internal: true
-    id: cs
-    device_class: "ILLUMINANCE"
-    unit_of_measurement: "lx"
-    accuracy_decimals: 0 
-    lambda: |-
-      return id(cc);
-
-# liters
-  - platform: template
-    name: "⚠️ Water Total (mL) [DEPRECATED]"
-    icon: mdi:alert-circle-outline
-    id: report_liters
-    force_update: false
-    device_class: "water"
-    unit_of_measurement: "mL"
-    accuracy_decimals: 3
-    state_class: total_increasing
-    lambda: |-
-      if (id(liters) < 2){
-        return 0;
-      }    
-      return id(last_reported_liters__mili);
-
-  - platform: template
-    name: "Muino Water Total (L)"
-    id: report_liters_ml
-    force_update: false
-    device_class: "water"
-    unit_of_measurement: "L"
-    accuracy_decimals: 3
-    state_class: total_increasing
-    lambda: |-
-      if (id(liters) < 2){
-        return 0;
-      }    
-      return id(last_reported_liters__mili)/1000.0;
-
-  - platform: template
-    name: "liters"
-    id: report_liters_rounded
-    force_update: false
-    device_class: "water"
-    unit_of_measurement: "L"
-    accuracy_decimals: 0 
-    state_class: total_increasing
-    lambda: |-
-      if (id(last_reported_liters) < 2){
-        return 0;
-      }  
-      return id(last_reported_liters);
-
-  # Flow rate sensors
-  - platform: template
-    name: "Flow Rate Current"
-    id: flow_rate_current_sensor
-    force_update: false
-    unit_of_measurement: "L/min"
-    accuracy_decimals: 2
-    state_class: measurement
-    lambda: |-
-      return id(flow_rate_current);
-
-  - platform: template
-    name: "Flow Rate Last"
-    id: flow_rate_last_sensor
-    force_update: false
-    unit_of_measurement: "L/min"
-    accuracy_decimals: 2
-    state_class: measurement
-    lambda: |-
-      return id(flow_rate_last);
+    filters:
+      # skip inital readings to allow sensors to stabilize.
+      - skip_initial: ${initialization_readings}
+          
+  - <<: *diff_common
+    id: light_sensor_b_diff
+    name: "light_sensor_b_diff"
+    lambda: return id(light_sensor_b_light).state - id(light_sensor_b_dark).state;
+     
+  - <<: *diff_common
+    id: light_sensor_c_diff
+    name: "light_sensor_c_diff"
+    lambda: return id(light_sensor_c_light).state - id(light_sensor_c_dark).state;
 
   # Consumption sensors
-  - platform: template
+  - &consumption_common
+    platform: template
+    name: "Lifetime Consumption"
+    id: consumption_lifetime
+    device_class: "water"
+    unit_of_measurement: "L"
+    accuracy_decimals: 2
+    update_interval: never
+    state_class: total_increasing
+    
+  - <<: *consumption_common
+    id: consumption_since_restart
+    name: "Consumption since restart"
+
+  - <<: *consumption_common
+    id: consumption_current
     name: "Current Consumption"
-    id: current_consumption_sensor
-    force_update: false
-    device_class: "water"
-    unit_of_measurement: "L"
-    accuracy_decimals: 1
-    lambda: |-
-      return id(current_consumption);
 
-  - platform: template
+  - <<: *consumption_common
+    id: consumption_previous
     name: "Previous Consumption"
-    id: previous_consumption_sensor
-    force_update: false
-    device_class: "water"
-    unit_of_measurement: "L"
-    accuracy_decimals: 1
-    lambda: |-
-      return id(previous_consumption);
 
-  - platform: template
-    id: phase_coarse
-    device_class: "water"
-    state_class: "total"
-    internal: true
-    on_value:
-      if:
-        condition:
-      # Same syntax for is_off
-          switch.is_on: fastupdate
-        then:
-          - component.update: report_liters
-          - component.update: report_liters_ml
-          - component.update: report_liters_rounded
-          - component.update: al
-          - component.update: bl
-          - component.update: cl
-          - component.update: ad
-          - component.update: bd
-          - component.update: cd
-          - component.update: as
-          - component.update: bs
-          - component.update: cs
-          - component.update: flow_rate_current_sensor
-          - component.update: flow_rate_last_sensor
-          - component.update: current_consumption_sensor
-          - component.update: previous_consumption_sensor
-    lambda: |-
-      static bool first = true;
+  # Flow rate sensors
+  - &flow_rate_common
+    platform: template
+    name: "Instant Flow Rate"
+    id: flow_rate_now
+    device_class: "volume_flow_rate"
+    unit_of_measurement: "L/min"
+    accuracy_decimals: 2
+    update_interval: never
+    state_class: measurement
 
-      // Read the raw values from the sensors
-      int a = id(light_sensor_a_light).state - id(light_sensor_a_dark).state;
-      int b = id(light_sensor_b_light).state - id(light_sensor_b_dark).state;
-      int c = id(light_sensor_c_light).state - id(light_sensor_c_dark).state;
+  - <<: *flow_rate_common
+    id: flow_rate_current
+    name: "Current Flow Rate"
 
-      // Update history buffers
-      id(a_history)[id(history_index)] = a;
-      id(b_history)[id(history_index)] = b;
-      id(c_history)[id(history_index)] = c;
-
-      // Compute moving averages
-      id(smoothed_a) = (id(a_history)[0] + id(a_history)[1] + id(a_history)[2]) / 3;
-      id(smoothed_b) = (id(b_history)[0] + id(b_history)[1] + id(b_history)[2]) / 3;
-      id(smoothed_c) = (id(c_history)[0] + id(c_history)[1] + id(c_history)[2]) / 3;
-
-      // Move to the next history index
-      id(history_index) = (id(history_index) + 1) % 3;
-
-      // Use the smoothed values instead of raw values
-      id(aa) = id(smoothed_a);
-      id(bb) = id(smoothed_b);
-      id(cc) = id(smoothed_c);
-      
-      int max = id(upper_bound);
-      int min = id(lower_bound);
-
-      if (a < min || b < min || c < min ){
-        ESP_LOGW("light_level", "Signal too weak. Possible causes: too bright environment, LED failure, or sensor misalignment. Ignoring measurement.");
-        return 0;
-      }
-      if (a > max || b > max || c > max){
-        ESP_LOGW("light_level", "Too bright, ignoring this measurement");
-        return 0;
-      }
-      if (first){
-        id(min_a)= a;
-        id(min_b)= b;
-        id(min_c)= c;
-        id(max_a)= 0;
-        id(max_b)= 0;
-        id(max_c)= 0;
-        first = false;
-        return 0;
-      }
-
-
-      float alpha_cor = 0.001;
-      if (id(liters) < 2) {
-          alpha_cor = 0.1; // when 2 liter not found correct harder
-          if (id(liters) < 0) {
-              // Reset calibration if negative liters detected  
-              id(liters) = 0;
-              id(min_a)= a;
-              id(min_b)= b;
-              id(min_c)= c;
-              id(max_a)= 0;
-              id(max_b)= 0;
-              id(max_c)= 0;
-          }
-      }
-
-      auto mini_average = [](float x, float y, float alpha_cor){
-        if ((x + 5) <= y && y > 10) {
-            return x;
-        } else {
-            return (1 - alpha_cor) * x + alpha_cor * y;
-        }
-      };
-      auto max_average = [](int x, int y, float alpha_cor) {
-        // ESP_LOGI("main", "x: %d, y: %d, a: %f",x,y,alpha_cor);
-        if ((x - 5) >= y && y < 2500) {
-            return x;
-        } else {
-            return (int)((1 - alpha_cor) * (float)x + alpha_cor * (float)y);
-        }
-      };
-      id(min_a)= mini_average(id(min_a), a, alpha_cor);
-      id(min_b)= mini_average(id(min_b), b, alpha_cor);
-      id(min_c)= mini_average(id(min_c), c, alpha_cor);
-      id(max_a)= max_average(id(max_a), a, alpha_cor);
-      id(max_b)= max_average(id(max_b), b, alpha_cor);
-      id(max_c)= max_average(id(max_c), c, alpha_cor);
-
-      if (id(manual_calibration)) {
-        // Manual offsets
-        a -= id(manual_offset_a);
-        b -= id(manual_offset_b);
-        c -= id(manual_offset_c);
-        id(min_a)= id(manual_offset_a);
-        id(min_b)= id(manual_offset_b);
-        id(min_c)= id(manual_offset_c);
-        id(max_a)= id(manual_offset_a)+2;
-        id(max_b)= id(manual_offset_b)+2;
-        id(max_c)= id(manual_offset_c)+2;
-      } else {
-        // Auto-calibration offsets
-        a -= (id(min_a) + id(max_a)) >> 1;
-        b -= (id(min_b) + id(max_b)) >> 1;
-        c -= (id(min_c) + id(max_c)) >> 1;
-      }
-      // log with manual calibration the offset and without first string manual_ofset* tehn the auto calibration one 
-      ESP_LOGD("calibration", "a_offset:%d b_offset:%d c_offset:%d | a_auto:%d b_auto:%d c_auto:%d",
-                id(manual_offset_a), id(manual_offset_b), id(manual_offset_c),
-                (id(min_a) + id(max_a)) >> 1,
-                (id(min_b) + id(max_b)) >> 1,
-                (id(min_c) + id(max_c)) >> 1);
-      
-
-      short    pn[5];
-      if (id(phase) & 1)
-          pn[0] = a + a - b - c, pn[1] = b + b - a - c,
-          pn[2] = c + c - a - b; // same
-      else
-          pn[0]     = b + c - a - a, // less
-              pn[1] = a + c - b - b, // more
-              pn[2] = a + b - c - c; // same
-      pn[3] = pn[0], pn[4] = pn[1];
-      
-      short i = id(phase) > 2 ? id(phase) - 3 : id(phase);
-      if (pn[i + 2] < pn[i + 1] && pn[i + 2] < pn[i]){
-          uint32_t current_time = millis();
-          id(last_water_flow) = current_time;
-          
-          // Simple flow rate calculation based on time between phase changes
-          if (id(last_flow_time) > 0) {
-            uint32_t time_diff = current_time - id(last_flow_time);
-            if (time_diff > 0) {
-              // Flow rate based on phase changes (6 phases = 1 liter)
-              // Each phase = 1/6 liter, time_diff in ms
-              float liters_per_phase = 1.0 / 6.0;
-              float flow_rate = (liters_per_phase * 60000.0) / float(time_diff); // L/min
-              
-              // Smooth the flow rate with exponential moving average
-              if (id(flow_rate_current) == 0.0) {
-                id(flow_rate_current) = flow_rate;
-              } else {
-                id(flow_rate_current) = 0.7 * id(flow_rate_current) + 0.3 * flow_rate;
-              }
-            }
-          }
-          
-          id(last_flow_time) = current_time;
-          id(last_flow_liters) = id(liters);
-          
-          if (pn[i + 1] > pn[i])
-              id(phase)++;
-          else
-              id(phase)--;
-      }
-      
-      // Auto-reset consumption after 30 seconds of no flow
-      if ((millis() - id(last_water_flow)) >= 30000) {
-        if (id(current_consumption) > 0.0) { // Reset any consumption > 0
-          // Store current consumption as previous before resetting
-          id(previous_consumption) = id(current_consumption);
-          id(flow_rate_last) = id(flow_rate_current);
-          
-          // Reset for next consumption period
-          id(current_consumption) = 0.0;
-          id(consumption_start_time) = 0; // Reset to start fresh next time
-          id(consumption_start_liters) = 0;
-          
-          // Reset flow rate
-          id(flow_rate_current) = 0.0;
-        }
-      }
-      
-      if (id(phase) == 6) {
-          id(liters)++;
-          id(phase) = 0;
-          
-          // Auto-start consumption tracking on first flow
-          if (id(consumption_start_time) == 0) {
-            id(consumption_start_time) = millis();
-            id(consumption_start_liters) = id(liters) - 1;
-          }
-          id(current_consumption) = float(id(liters) - id(consumption_start_liters));
-      }
-      else if (id(phase) == -1) {
-          id(liters)--;
-          id(phase) = 5;
-          
-          // Handle reverse flow
-          if (id(consumption_start_time) == 0) {
-            id(consumption_start_time) = millis();
-            id(consumption_start_liters) = id(liters) + 1;
-          }
-          id(current_consumption) = float(id(liters) - id(consumption_start_liters));
-      }
-          
-      return id(liters);
-
-
-globals:
-  - id: last_reported_liters
-    type: int
-    initial_value: '0'
-  - id: last_reported_liters__mili
-    type: int
-    initial_value: '0'
-  - id: last_water_flow
-    type: uint32_t
-    initial_value: '0'
-  - id: phase
-    type: int
-    initial_value: "0"
-  - id: liters
-    type: int
-    initial_value: "0"
-  # Flow rate tracking variables
-  - id: flow_rate_current
-    type: float
-    initial_value: "0.0"
-  - id: flow_rate_last
-    type: float
-    initial_value: "0.0"
-  - id: last_flow_time
-    type: uint32_t
-    initial_value: '0'
-  - id: last_flow_liters
-    type: int
-    initial_value: '0'
-  # Consumption tracking
-  - id: current_consumption
-    type: float
-    initial_value: "0.0"
-  - id: previous_consumption
-    type: float
-    initial_value: "0.0"
-  - id: consumption_start_time
-    type: uint32_t
-    initial_value: '0'
-  - id: consumption_start_liters
-    type: int
-    initial_value: '0'
-  - id: aa
-    type: int
-    initial_value: "0"
-  - id: bb
-    type: int
-    initial_value: "0"
-  - id: cc
-    type: int
-    initial_value: "0"
-  - id: max_a
-    type: int
-  - id: max_b
-    type: int
-  - id: max_c
-    type: int
-  - id: min_a
-    type: int
-  - id: min_b
-    type: int
-  - id: min_c
-    type: int
-  - id: upper_bound
-    initial_value: "1500"
-    type: int
-  - id: lower_bound
-    type: int
-    initial_value: "5"
-
-  # Switch that toggles between auto-calibration and manual calibration
-  - id: manual_calibration
-    type: bool
-    restore_value: yes  # <--- important
-    initial_value: "false"
-
-  # Manual offsets for a, b, c
-  - id: manual_offset_a
-    type: int
-    restore_value: yes
-    initial_value: "0"
-  - id: manual_offset_b
-    type: int
-    restore_value: yes
-    initial_value: "0"
-  - id: manual_offset_c
-    type: int
-    restore_value: yes
-    initial_value: "0"
-
-    # Parameters for the moving average of size 3
-  - id: a_history
-    type: int[3]
-    initial_value: "{0, 0, 0}"
-  - id: b_history
-    type: int[3]
-    initial_value: "{0, 0, 0}"
-  - id: c_history
-    type: int[3]
-    initial_value: "{0, 0, 0}"
-  - id: history_index
-    type: int
-    initial_value: "0"
-
-  - id: smoothed_a
-    type: int
-    initial_value: "0"
-  - id: smoothed_b
-    type: int
-    initial_value: "0"
-  - id: smoothed_c
-    type: int
-    initial_value: "0"
-
-  - id: update_interval_idle
-    type: int
-    restore_value: yes
-    initial_value: "60"
+  - <<: *flow_rate_common
+    id: flow_rate_previous
+    name: "Previous Flow Rate"
 
 number:
   - platform: template
-    id: offset_a_number
-    name: "Offset A (0-3300)"
+    id: consumption_lifetime_number
+    name: "Lifetime Consumption"
+    entity_category: "config"
+    device_class: "water"
+    unit_of_measurement: "L"
+    update_interval: never
     min_value: 0
-    max_value: 3300
-    step: 1
-    lambda: return id(manual_offset_a);
+    max_value: 1000000000
+    step: 1e-9
     set_action:
-      then:
-        - lambda: |-
-            id(manual_offset_a) = (int) x;
+      - lambda: |- 
+          id(global_consumption_lifetime) = x;
+          id(consumption_lifetime).publish_state(x);
 
   - platform: template
-    id: offset_b_number
-    name: "Offset B (0-3300)"
+    id: nr_phases
+    name: "Number of Phases"
+    min_value: 6
+    max_value: ${max_phase_count}
+    initial_value: 6
+    step: 6
+    mode: slider
+    entity_category: "config"
+    update_interval: never
+    restore_value: true
+    optimistic: true
+    disabled_by_default: true
+    set_action:
+      - lambda: nr_phases_changed();
+
+  - &num_common
+    platform: template
+    id: min_a
+    name: "Min A"
     min_value: 0
-    max_value: 3300
+    max_value: ${upper_bound}
+    initial_value: 0
+    entity_category: "config"
+    device_class: "voltage"
+    unit_of_measurement: "V"
+    step: 1e-9
+    update_interval: never
+    restore_value: true
+    optimistic: true
+    disabled_by_default: true
+
+  - <<: *num_common
+    id: min_b
+    name: "Min B"
+
+  - <<: *num_common
+    id: min_c
+    name: "Min C"
+
+  - <<: *num_common
+    id: max_a
+    name: "Max A"
+
+  - <<: *num_common
+    id: max_b
+    name: "Max B"
+
+  - <<: *num_common
+    id: max_c
+    name: "Max C"
+
+  - &pattern_common
+    platform: template
+    id: pattern_0
+    name: "Pattern for Phase 0"
+    min_value: -1
+    max_value: 8
+    initial_value: -1
+    entity_category: "config"
     step: 1
-    lambda: return id(manual_offset_b);
-    set_action:
-      then:
-        - lambda: |-
-            id(manual_offset_b) = (int) x;
- 
-  - platform: template
-    id: offset_c_number
-    name: "Offset C (0-3300)"
-    min_value: 0
-    max_value: 3300
-    step: 1
-    lambda: return id(manual_offset_c);
-    set_action:
-      then:
-        - lambda: |-
-            id(manual_offset_c) = (int) x;
+    mode: box
+    update_interval: never
+    disabled_by_default: true
+    optimistic: true
+    restore_value: true
 
-  - platform: template
-    id: update_interval_idle_number
-    name: "Update Interval (s)"
-    min_value: 1
-    max_value: 3600
-    step: 1
-    lambda: return id(update_interval_idle);
-    set_action:
-      then:
-        - lambda: |-
-            id(update_interval_idle) = (int) x;
+  - <<: *pattern_common
+    id: pattern_1
+    name: "Pattern for Phase 1"
+  - <<: *pattern_common
+    id: pattern_2
+    name: "Pattern for Phase 2"
+  - <<: *pattern_common
+    id: pattern_3
+    name: "Pattern for Phase 3"
+  - <<: *pattern_common
+    id: pattern_4
+    name: "Pattern for Phase 4"
+  - <<: *pattern_common
+    id: pattern_5
+    name: "Pattern for Phase 5"
+  - <<: *pattern_common
+    id: pattern_6
+    name: "Pattern for Phase 6"
+  - <<: *pattern_common
+    id: pattern_7
+    name: "Pattern for Phase 7"
+  - <<: *pattern_common
+    id: pattern_8
+    name: "Pattern for Phase 8"
+  - <<: *pattern_common
+    id: pattern_9
+    name: "Pattern for Phase 9"
+  - <<: *pattern_common
+    id: pattern_10
+    name: "Pattern for Phase 10"
+  - <<: *pattern_common
+    id: pattern_11
+    name: "Pattern for Phase 11"
 
+  - &fraction_common
+    platform: template
+    id: fraction_0
+    name: "Liters for Phase 0"
+    min_value: -0.001
+    max_value: ${liters_per_rotation}
+    initial_value: -0.001
+    entity_category: "config"
+    device_class: "water"
+    unit_of_measurement: "L"
+    step: 1e-9
+    update_interval: never
+    disabled_by_default: true
+    optimistic: true
+    restore_value: true
 
+  - <<: *fraction_common
+    id: fraction_1
+    name: "Liters for Phase 1"
+  - <<: *fraction_common
+    id: fraction_2
+    name: "Liters for Phase 2"
+  - <<: *fraction_common
+    id: fraction_3
+    name: "Liters for Phase 3"
+  - <<: *fraction_common
+    id: fraction_4
+    name: "Liters for Phase 4"
+  - <<: *fraction_common
+    id: fraction_5
+    name: "Liters for Phase 5"
+  - <<: *fraction_common
+    id: fraction_6
+    name: "Liters for Phase 6"
+  - <<: *fraction_common
+    id: fraction_7
+    name: "Liters for Phase 7"
+  - <<: *fraction_common
+    id: fraction_8
+    name: "Liters for Phase 8"
+  - <<: *fraction_common
+    id: fraction_9
+    name: "Liters for Phase 9"
+  - <<: *fraction_common
+    id: fraction_10
+    name: "Liters for Phase 10"
+  - <<: *fraction_common
+    id: fraction_11
+    name: "Liters for Phase 11"
+    
+globals:
+  # sensors use float values, but we want to be able to set the lifetime consumption with 
+  # higher precision, so we use a double for the global variable and publish it to the sensor 
+  # when it changes.
+  - id: global_consumption_lifetime
+    type: double
+    restore_value: true
+  
+# Trgger readings at a fixed interval, and execute the update_readings script
+interval:
+  - interval: ${sample_interval}
+    startup_delay: ${sample_interval}
+    then:
+      - script.execute: update_readings
 
-# Make sure logging is correct for solving platform IO bugs
-logger:
-  hardware_uart: USB_SERIAL_JTAG
-  level: INFO
-
-# API is a requirement of the dashboard import.
-api:
-
-# OTA is required for Over-the-Air updating
-ota:
-  platform: esphome
-
-# This should point to the public location of this yaml file.
-# dashboard_import:
-#   package_import_url: github://martijnvwezel/watermeter-esphome/muino-water-meter-esp32.yaml@main
-
-wifi:
-  # Set up a wifi access point using the device name above
-  ap:
-  # manual_ip:
-  #   static_ip: 192.168.1.84
-  #   gateway: 192.168.1.1
-  #   subnet: 255.255.255.0
-# In combination with the `ap` this allows the user
-# to provision wifi credentials to the device.
-captive_portal:
-
-# Sets up Bluetooth LE (Only on ESP32) to allow the user
-# to provision wifi credentials to the device.
-# save some energy
-# esp32_improv:
-#   authorizer: none
-
+# Reads the ADC states, both dark and bright and processes the readings to calculate flow and consumption. 
+# The timing of the readings is important, so we do this in a script.
+script:
+  - id: update_readings
+    then:
+      # Switch on the sensor power and wait a bit for the sensors to stabilize before taking readings.
+      - output.turn_on: sensor_power
+      - delay: 20ms
+      # Take multiple readings in the dark that are averaged by the moving window.
+      - repeat:
+          count: ${samples_per_reading}
+          then:
+            - component.update: light_sensor_a_dark
+            - component.update: light_sensor_b_dark
+            - component.update: light_sensor_c_dark
+      # Turn on the led and wait a bit for the sensors to stabilize before taking readings.
+      - output.turn_on: led
+      - delay: 20ms
+      # Take multiple readings in the light that are averaged by the moving window.
+      - repeat:
+          count: ${samples_per_reading}
+          then:
+            - component.update: light_sensor_a_light
+            - component.update: light_sensor_a_diff
+            - component.update: light_sensor_b_light
+            - component.update: light_sensor_b_diff
+            - component.update: light_sensor_c_light
+            - component.update: light_sensor_c_diff
+      # Turn off the led and sensor power.
+      - output.turn_off: led
+      - output.turn_off: sensor_power
+      # Process the readings to calculate flow and consumption, and update the sensors accordingly.
+      - lambda: process_readings();
+      

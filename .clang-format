@@ -28,7 +28,7 @@ BreakBeforeBraces: Attach
 # BreakBeforeTernaryOperators (bool)
 # BreakConstructorInitializersBeforeComma (bool)
 # BreakStringLiterals (bool)
-ColumnLimit: 1000
+ColumnLimit: 132
 # CommentPragmas (std::string)
 # ConstructorInitializerAllOnOneLineOrOnePerLine (bool)
 # ConstructorInitializerIndentWidth (unsigned)
