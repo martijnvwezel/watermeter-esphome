@@ -22,7 +22,7 @@ substitutions:
   upper_bound: 3.3
   
   # Minimum required range between min and max for calibration to be accepted
-  min_range: 0.02
+  min_range: 0.005
   
   # Hysteresis band for state changes in the normalized signales (so between -1 and +1)
   hysteresis_band: 0.5
