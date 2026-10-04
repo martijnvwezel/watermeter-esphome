@@ -46,7 +46,11 @@ interval:
                     phase_fraction = id(phase) / 6.0;
                   } else {
                     // In dark section (240°): phases 2-5 = 0.333 to 1.0 liters
-                    phase_fraction = 0.333 + ((id(phase) - 2) * 0.667 / 4.0);
+                    // phase_fraction = 0.333 + ((id(phase) - 2) * 0.667 / 4.0);
+                    // phases 2..5 -> 0.3333 .. 1.0
+                    // (phase-2) is 0..3, divide by 3 so phase=5 reaches 1.0
+                    //phase_fraction = 0.333333f + ((id(phase) - 2.0f) / 3.0f) * 0.666667f;
+                    phase_fraction = 0.3333 + ((id(phase) - 2)/3 * 0.66667);
                   }
                   id(last_reported_liters__mili) = (int)(1000*(id(liters) + phase_fraction));
                 }
@@ -103,8 +107,12 @@ interval:
                       // In white section (120°): phases 0-1 = 0.0 to 0.333 liters
                       phase_fraction = id(phase) / 6.0;
                     } else {
-                      // In dark section (240°): phases 2-5 = 0.333 to 1.0 liters
-                      phase_fraction = 0.333 + ((id(phase) - 2) * 0.667 / 4.0);
+                    // In dark section (240°): phases 2-5 = 0.333 to 1.0 liters
+                    // phase_fraction = 0.333 + ((id(phase) - 2) * 0.667 / 4.0);
+                    // phases 2..5 -> 0.3333 .. 1.0
+                    // (phase-2) is 0..3, divide by 3 so phase=5 reaches 1.0
+                    //phase_fraction = 0.333333f + ((id(phase) - 2.0f) / 3.0f) * 0.666667f;
+                    phase_fraction = 0.3333 + ((id(phase) - 2)/3 * 0.66667);
                     }
                     id(last_reported_liters__mili) = (int)(1000*(id(liters) + phase_fraction));
                   }
