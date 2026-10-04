@@ -1,4 +1,9 @@
-# CHANGEME: Set these variable to your liking
-title: ESPHome Muino Water Reader
-description: Powered by ESPHome and ESP Web Tools
-theme: jekyll-theme-slate
+title: Muino Water Meter Reader
+description: Firmware installer and setup guide for the Muino Smart Water Meter Reader
+url: https://watermeter.muino.nl
+baseurl: ""
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
