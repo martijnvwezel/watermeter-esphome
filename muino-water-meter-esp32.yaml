@@ -235,6 +235,9 @@ sensor:
     name: "light_sensor_a_dark"
     id: light_sensor_a_dark
     raw: true
+    # Only sampled by the 100ms interval chain, never on its own. A stray
+    # poll reads with the LED in the wrong state and corrupts the phase.
+    update_interval: never
     internal: true
     on_value:
       then:
@@ -246,6 +249,7 @@ sensor:
     id: light_sensor_b_dark
     name: "light_sensor_b_dark"
     raw: true
+    update_interval: never
     internal: true
     on_value:
       then:
@@ -258,6 +262,7 @@ sensor:
     id: light_sensor_c_dark
     name: "light_sensor_c_dark"
     raw: true
+    update_interval: never
     internal: true
     on_value:
       then:
@@ -274,6 +279,7 @@ sensor:
     name: "light_sensor_a_light"
     id: light_sensor_a_light
     raw: true
+    update_interval: never
     internal: true
     on_value:
       then:
@@ -286,6 +292,7 @@ sensor:
     id: light_sensor_b_light
     name: "light_sensor_b_light"
     raw: true
+    update_interval: never
     internal: true
     on_value:
       then:
@@ -298,6 +305,7 @@ sensor:
     id: light_sensor_c_light
     name: "light_sensor_c_light"
     raw: true
+    update_interval: never
     internal: true
     on_value:
       then:
@@ -501,6 +509,9 @@ sensor:
     device_class: "water"
     state_class: "total"
     internal: true
+    # Only evaluated once per sample by the light_sensor_c_light chain. Extra
+    # evaluations in between would count steps at the wrong time.
+    update_interval: never
     on_value:
       if:
         condition:
