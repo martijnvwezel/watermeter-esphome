@@ -235,6 +235,9 @@ sensor:
     name: "light_sensor_a_dark"
     id: light_sensor_a_dark
     raw: true
+    # Only sampled by the 100ms interval chain, never on its own. A stray
+    # poll reads with the LED in the wrong state and corrupts the phase.
+    update_interval: never
     internal: true
     on_value:
       then:
@@ -246,6 +249,7 @@ sensor:
     id: light_sensor_b_dark
     name: "light_sensor_b_dark"
     raw: true
+    update_interval: never
     internal: true
     on_value:
       then:
@@ -258,6 +262,7 @@ sensor:
     id: light_sensor_c_dark
     name: "light_sensor_c_dark"
     raw: true
+    update_interval: never
     internal: true
     on_value:
       then:
@@ -274,6 +279,7 @@ sensor:
     name: "light_sensor_a_light"
     id: light_sensor_a_light
     raw: true
+    update_interval: never
     internal: true
     on_value:
       then:
@@ -286,6 +292,7 @@ sensor:
     id: light_sensor_b_light
     name: "light_sensor_b_light"
     raw: true
+    update_interval: never
     internal: true
     on_value:
       then:
@@ -298,6 +305,7 @@ sensor:
     id: light_sensor_c_light
     name: "light_sensor_c_light"
     raw: true
+    update_interval: never
     internal: true
     on_value:
       then:
@@ -501,6 +509,9 @@ sensor:
     device_class: "water"
     state_class: "total"
     internal: true
+    # Only evaluated once per sample by the light_sensor_c_light chain. Extra
+    # evaluations in between would count steps at the wrong time.
+    update_interval: never
     on_value:
       if:
         condition:
@@ -525,6 +536,49 @@ sensor:
           - component.update: previous_consumption_sensor
     lambda: |-
       static bool first = true;
+
+      // Water usage event and flow rate tracking. An event starts at the first
+      // phase step and ends after 30 seconds without steps.
+      // One step is 1/6 L, so N steps in T ms is N * STEP_FLOW / T L/min.
+      const float STEP_FLOW = 10000.0;
+      const int FLOW_HIST = 7; // 7 steps span 6 intervals, one full revolution
+      static bool flow_event_active = false;
+      static int flow_event_steps = 0; // signed steps since the event started
+      static float flow_rate_measured = 0.0; // flow over the last steps
+      static uint32_t flow_hist_time[FLOW_HIST]; // newest first
+      static int flow_hist_steps[FLOW_HIST];
+      static int flow_hist_count = 0;
+      const uint32_t now = millis();
+
+      // Runs on every sample, before the checks below can return early
+      if (flow_event_active) {
+        uint32_t idle = now - id(last_flow_time);
+        if (idle >= 30000) {
+          // End of the event, keep its results as the previous ones. Keep
+          // the last flow rate if this event was too short to measure one.
+          id(previous_consumption) = id(current_consumption);
+          if (flow_rate_measured != 0.0)
+            id(flow_rate_last) = flow_rate_measured;
+          id(current_consumption) = 0.0;
+          id(flow_rate_current) = 0.0;
+          flow_rate_measured = 0.0;
+          flow_event_active = false;
+        } else if (idle > 0) {
+          float rate = flow_rate_measured;
+          if (fabsf(rate) * idle > 3 * STEP_FLOW) {
+            // The next step is over 3 times later than the measured flow
+            // predicts, so the water stopped or slowed down a lot
+            rate = 0.0;
+          } else {
+            // No step for `idle` ms means the flow can't be much more than
+            // one step per `idle`. Allow 2 to tolerate unevenly spaced steps.
+            float bound = 2 * STEP_FLOW / idle;
+            if (rate > bound) rate = bound;
+            if (rate < -bound) rate = -bound;
+          }
+          id(flow_rate_current) = rate;
+        }
+      }
 
       // Read the raw values from the sensors
       int a = id(light_sensor_a_light).state - id(light_sensor_a_dark).state;
@@ -646,76 +700,52 @@ sensor:
       
       short i = id(phase) > 2 ? id(phase) - 3 : id(phase);
       if (pn[i + 2] < pn[i + 1] && pn[i + 2] < pn[i]){
-          uint32_t current_time = millis();
-          id(last_water_flow) = current_time;
-          
-          // Simple flow rate calculation based on time between phase changes
-          if (id(last_flow_time) > 0) {
-            uint32_t time_diff = current_time - id(last_flow_time);
-            if (time_diff > 0) {
-              // Flow rate based on phase changes (6 phases = 1 liter)
-              // Each phase = 1/6 liter, time_diff in ms
-              float liters_per_phase = 1.0 / 6.0;
-              float flow_rate = (liters_per_phase * 60000.0) / float(time_diff); // L/min
-              
-              // Smooth the flow rate with exponential moving average
-              if (id(flow_rate_current) == 0.0) {
-                id(flow_rate_current) = flow_rate;
-              } else {
-                id(flow_rate_current) = 0.7 * id(flow_rate_current) + 0.3 * flow_rate;
-              }
-            }
+          int dir = pn[i + 1] > pn[i] ? 1 : -1;
+          id(phase) += dir;
+          id(last_water_flow) = now;
+          id(last_flow_time) = now;
+
+          if (!flow_event_active) {
+            flow_event_active = true;
+            flow_event_steps = 0;
+            flow_hist_count = 0;
           }
-          
-          id(last_flow_time) = current_time;
-          id(last_flow_liters) = id(liters);
-          
-          if (pn[i + 1] > pn[i])
-              id(phase)++;
-          else
-              id(phase)--;
+          // Count steps per event rather than comparing liters, so a liters
+          // reset (e.g. Reset Calibration) can't corrupt the consumption
+          flow_event_steps += dir;
+          id(current_consumption) = flow_event_steps / 6.0;
+
+          for (int k = FLOW_HIST - 1; k > 0; k--) {
+            flow_hist_time[k] = flow_hist_time[k - 1];
+            flow_hist_steps[k] = flow_hist_steps[k - 1];
+          }
+          flow_hist_time[0] = now;
+          flow_hist_steps[0] = flow_event_steps;
+          if (flow_hist_count < FLOW_HIST)
+            flow_hist_count++;
+
+          // Measure flow over the last full revolution so unevenly spaced
+          // steps average out, or over this event's steps if it's shorter.
+          // Needs at least 2 intervals, a single one is too unreliable.
+          if (flow_hist_count >= 3) {
+            int oldest = flow_hist_count - 1;
+            uint32_t span = now - flow_hist_time[oldest];
+            int steps = flow_event_steps - flow_hist_steps[oldest];
+            if (span > 0)
+              flow_rate_measured = steps * STEP_FLOW / span;
+          }
+          id(flow_rate_current) = flow_rate_measured;
       }
-      
-      // Auto-reset consumption after 30 seconds of no flow
-      if ((millis() - id(last_water_flow)) >= 30000) {
-        if (id(current_consumption) > 0.0) { // Reset any consumption > 0
-          // Store current consumption as previous before resetting
-          id(previous_consumption) = id(current_consumption);
-          id(flow_rate_last) = id(flow_rate_current);
-          
-          // Reset for next consumption period
-          id(current_consumption) = 0.0;
-          id(consumption_start_time) = 0; // Reset to start fresh next time
-          id(consumption_start_liters) = 0;
-          
-          // Reset flow rate
-          id(flow_rate_current) = 0.0;
-        }
-      }
-      
+
       if (id(phase) == 6) {
           id(liters)++;
           id(phase) = 0;
-          
-          // Auto-start consumption tracking on first flow
-          if (id(consumption_start_time) == 0) {
-            id(consumption_start_time) = millis();
-            id(consumption_start_liters) = id(liters) - 1;
-          }
-          id(current_consumption) = float(id(liters) - id(consumption_start_liters));
       }
       else if (id(phase) == -1) {
           id(liters)--;
           id(phase) = 5;
-          
-          // Handle reverse flow
-          if (id(consumption_start_time) == 0) {
-            id(consumption_start_time) = millis();
-            id(consumption_start_liters) = id(liters) + 1;
-          }
-          id(current_consumption) = float(id(liters) - id(consumption_start_liters));
       }
-          
+
       return id(liters);
 
 
@@ -745,9 +775,6 @@ globals:
   - id: last_flow_time
     type: uint32_t
     initial_value: '0'
-  - id: last_flow_liters
-    type: int
-    initial_value: '0'
   # Consumption tracking
   - id: current_consumption
     type: float
@@ -755,12 +782,6 @@ globals:
   - id: previous_consumption
     type: float
     initial_value: "0.0"
-  - id: consumption_start_time
-    type: uint32_t
-    initial_value: '0'
-  - id: consumption_start_liters
-    type: int
-    initial_value: '0'
   - id: aa
     type: int
     initial_value: "0"
