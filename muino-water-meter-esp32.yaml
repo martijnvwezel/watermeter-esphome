@@ -537,10 +537,17 @@ sensor:
     lambda: |-
       static bool first = true;
 
-      // Water usage event tracking. An event starts at the first phase step
-      // and ends after 30 seconds without steps.
+      // Water usage event and flow rate tracking. An event starts at the first
+      // phase step and ends after 30 seconds without steps.
+      // One step is 1/6 L, so N steps in T ms is N * STEP_FLOW / T L/min.
+      const float STEP_FLOW = 10000.0;
+      const int FLOW_HIST = 7; // 7 steps span 6 intervals, one full revolution
       static bool flow_event_active = false;
       static int flow_event_steps = 0; // signed steps since the event started
+      static float flow_rate_measured = 0.0; // flow over the last steps
+      static uint32_t flow_hist_time[FLOW_HIST]; // newest first
+      static int flow_hist_steps[FLOW_HIST];
+      static int flow_hist_count = 0;
       const uint32_t now = millis();
 
       // Runs on every sample, before the checks below can return early
@@ -549,10 +556,20 @@ sensor:
         if (idle >= 30000) {
           // End of the event, keep its results as the previous ones
           id(previous_consumption) = id(current_consumption);
-          id(flow_rate_last) = id(flow_rate_current);
+          id(flow_rate_last) = flow_rate_measured;
           id(current_consumption) = 0.0;
           id(flow_rate_current) = 0.0;
+          flow_rate_measured = 0.0;
           flow_event_active = false;
+        } else if (idle > 0) {
+          // No step for `idle` ms means the flow can't be much more than one
+          // step per `idle`. Allow 2 to tolerate unevenly spaced steps. This
+          // makes the reading fall towards zero once the water stops.
+          float bound = 2 * STEP_FLOW / idle;
+          float rate = flow_rate_measured;
+          if (rate > bound) rate = bound;
+          if (rate < -bound) rate = -bound;
+          id(flow_rate_current) = rate;
         }
       }
 
@@ -676,24 +693,6 @@ sensor:
       
       short i = id(phase) > 2 ? id(phase) - 3 : id(phase);
       if (pn[i + 2] < pn[i + 1] && pn[i + 2] < pn[i]){
-          // Simple flow rate calculation based on time between phase changes
-          if (id(last_flow_time) > 0) {
-            uint32_t time_diff = now - id(last_flow_time);
-            if (time_diff > 0) {
-              // Flow rate based on phase changes (6 phases = 1 liter)
-              // Each phase = 1/6 liter, time_diff in ms
-              float liters_per_phase = 1.0 / 6.0;
-              float flow_rate = (liters_per_phase * 60000.0) / float(time_diff); // L/min
-              
-              // Smooth the flow rate with exponential moving average
-              if (id(flow_rate_current) == 0.0) {
-                id(flow_rate_current) = flow_rate;
-              } else {
-                id(flow_rate_current) = 0.7 * id(flow_rate_current) + 0.3 * flow_rate;
-              }
-            }
-          }
-
           int dir = pn[i + 1] > pn[i] ? 1 : -1;
           id(phase) += dir;
           id(last_water_flow) = now;
@@ -702,11 +701,33 @@ sensor:
           if (!flow_event_active) {
             flow_event_active = true;
             flow_event_steps = 0;
+            flow_hist_count = 0;
           }
           // Count steps per event rather than comparing liters, so a liters
           // reset (e.g. Reset Calibration) can't corrupt the consumption
           flow_event_steps += dir;
           id(current_consumption) = flow_event_steps / 6.0;
+
+          for (int k = FLOW_HIST - 1; k > 0; k--) {
+            flow_hist_time[k] = flow_hist_time[k - 1];
+            flow_hist_steps[k] = flow_hist_steps[k - 1];
+          }
+          flow_hist_time[0] = now;
+          flow_hist_steps[0] = flow_event_steps;
+          if (flow_hist_count < FLOW_HIST)
+            flow_hist_count++;
+
+          // Measure flow over the last full revolution so unevenly spaced
+          // steps average out, or over this event's steps if it's shorter.
+          // Needs at least 2 intervals, a single one is too unreliable.
+          if (flow_hist_count >= 3) {
+            int oldest = flow_hist_count - 1;
+            uint32_t span = now - flow_hist_time[oldest];
+            int steps = flow_event_steps - flow_hist_steps[oldest];
+            if (span > 0)
+              flow_rate_measured = steps * STEP_FLOW / span;
+          }
+          id(flow_rate_current) = flow_rate_measured;
       }
 
       if (id(phase) == 6) {
