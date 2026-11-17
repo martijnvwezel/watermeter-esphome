@@ -554,21 +554,28 @@ sensor:
       if (flow_event_active) {
         uint32_t idle = now - id(last_flow_time);
         if (idle >= 30000) {
-          // End of the event, keep its results as the previous ones
+          // End of the event, keep its results as the previous ones. Keep
+          // the last flow rate if this event was too short to measure one.
           id(previous_consumption) = id(current_consumption);
-          id(flow_rate_last) = flow_rate_measured;
+          if (flow_rate_measured != 0.0)
+            id(flow_rate_last) = flow_rate_measured;
           id(current_consumption) = 0.0;
           id(flow_rate_current) = 0.0;
           flow_rate_measured = 0.0;
           flow_event_active = false;
         } else if (idle > 0) {
-          // No step for `idle` ms means the flow can't be much more than one
-          // step per `idle`. Allow 2 to tolerate unevenly spaced steps. This
-          // makes the reading fall towards zero once the water stops.
-          float bound = 2 * STEP_FLOW / idle;
           float rate = flow_rate_measured;
-          if (rate > bound) rate = bound;
-          if (rate < -bound) rate = -bound;
+          if (fabsf(rate) * idle > 3 * STEP_FLOW) {
+            // The next step is over 3 times later than the measured flow
+            // predicts, so the water stopped or slowed down a lot
+            rate = 0.0;
+          } else {
+            // No step for `idle` ms means the flow can't be much more than
+            // one step per `idle`. Allow 2 to tolerate unevenly spaced steps.
+            float bound = 2 * STEP_FLOW / idle;
+            if (rate > bound) rate = bound;
+            if (rate < -bound) rate = -bound;
+          }
           id(flow_rate_current) = rate;
         }
       }
